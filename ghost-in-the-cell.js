@@ -49,9 +49,7 @@ function playGame() {
       return myFactories[a].numCyborgs > myFactories[b].numCyborgs ? a : b;
     });
 
-    printErr("largestFactoryId: ", largestFactoryId);
-    const maybeBestFactory = findNearbyEmptyFactory(allFactories, largestFactoryId);
-    printErr("maybeBestFactory: ", maybeBestFactory);
+    printErr('largestFactoryId: ', largestFactoryId);
 
 
     // To debug: printErr('Debug messages...');
@@ -88,25 +86,22 @@ function initTurn(entityCount, allFactories, myFactories, enemyFactories, troops
   }
 }
 
-function findNearbyEmptyFactory(allFactories, largestFactoryId) {
-  let maxProd = 0;
-  let bestFactory = null;
+function getFactoryRatios(allFactories, ourFactory) {
   // TODO: doesn't recognize factory ID 0
-  // TODO: there has never been a factory that has a prod rate > 0 with no cyborgs on guard. I will need to change my tactic
-  const nearbyFactories = Object.keys(distanceFrom[largestFactoryId]).filter((otherFactory) => distanceFrom[largestFactoryId][otherFactory] < 5);
-  printErr('nearbyFactories:', nearbyFactories);
-  for (let i = 0; i < nearbyFactories.length; i++) {
-    const otherFactory = allFactories[nearbyFactories[i]];
-    printErr('otherFactory:', json.stringify(otherFactory));
-    if (otherFactory.owner !== MY_ENTITY &&
-        otherFactory.numCyborgs === 0 &&
-        otherFactory.prodRate > maxProd) {
-      maxProd = otherFactory.prodRate;
-      bestFactory = otherFactory;
-    }
+  // TODO: there has never been a factory that has a prod rate > 0 with no cyborgs on guard
+  // loop through all factories we don't own
+    //  get ratio of prodRate:cyborgsDefending:distanceFromUs
+  const enemyAndNeutralFactories = Object.keys(allFactories).filter((f) => f.owner !== MY_ENTITY);
+  printErr('enemyAndNeutralFactories:', enemyAndNeutralFactories);
+  const factoryRatios = {};
+
+  for (let i = 0; i < enemyAndNeutralFactories.length; i++) {
+    const targetFactory = allFactories[enemyAndNeutralFactories[i]];
+    printErr('targetFactory:', JSON.stringify(targetFactory));
+    factoryRatios[i] = targetFactory.prodRate / targetFactory.numCyborgs / distanceFrom[ourFactory][targetFactory];
   }
 
-  return bestFactory;
+  return factoryRatios;
 }
 
 
