@@ -29,11 +29,13 @@ function initGame() {
     const distance = parseInt(inputs[2], 10); // numb of turns needed to travel (1 <= distance <= 20)
     if (distanceFrom[factory1] == null) {
       distanceFrom[factory1] = {[factory2] : distance};
+      distanceFrom[factory1][factory1] = 0;
     } else {
       distanceFrom[factory1][factory2] = distance;
     }
     if (distanceFrom[factory2] == null) {
       distanceFrom[factory2] = {[factory1] : distance};
+      distanceFrom[factory2][factory2] = 0;
     } else {
       distanceFrom[factory2][factory1] = distance;
     }
@@ -41,6 +43,7 @@ function initGame() {
 }
 
 function playGame() {
+  printErr('distanceFrom: ', JSON.stringify(distanceFrom));
   while (true) {
     const entityCount = parseInt(readline(), 10); // numb of entities (factories and troops)
     initTurn(entityCount);
@@ -54,7 +57,7 @@ function playGame() {
 
     const factoryRatios = getFactoryRatios(largestFactoryId);
 
-    printErr('factoryRatios: ', factoryRatios);
+    printErr('factoryRatios: ', JSON.stringify(factoryRatios));
 
     const bestFactory = chooseTargetFactory(largestFactoryId, factoryRatios);
 
@@ -101,8 +104,11 @@ function getFactoryRatios(ourFactory) {
   const factoryRatios = {};
 
   for (let i = 0; i < enemyAndNeutralFactories.length; i++) {
-    const targetFactory = allFactories[enemyAndNeutralFactories[i]];
-    factoryRatios[i] = targetFactory.prodRate / targetFactory.numCyborgs / distanceFrom[ourFactory][targetFactory];
+    const targetFactory = enemyAndNeutralFactories[i];
+    const targetFactoryObj = allFactories[targetFactory];
+    printErr('targetFactoryObj:', targetFactory, JSON.stringify(targetFactoryObj));
+    printErr('distanceFrom[ourFactory][targetFactory]:', distanceFrom[ourFactory][targetFactory]);
+    factoryRatios[i] = targetFactoryObj.prodRate / targetFactoryObj.numCyborgs / distanceFrom[ourFactory][enemyAndNeutralFactories[i]];
   }
 
   return factoryRatios;
@@ -136,6 +142,7 @@ function chooseTargetFactory(fromFactory, factoryRatios) {
  * IMPLEMENTATION: (# of cyborgs defending the target factory + 1 + cushion)
  */
 function calculateNumCyborgsToSend(fromFactory, targetFactory) {
+  printErr(allFactories[targetFactory].numCyborgs, calculateCushion(fromFactory, targetFactory))
   return allFactories[targetFactory].numCyborgs + 1 + calculateCushion(fromFactory, targetFactory);
 }
 
@@ -149,12 +156,19 @@ function calculateNumCyborgsToSend(fromFactory, targetFactory) {
  * TODO should also take into the account of the number of cyborgs they have at their factories. Their biggest threat may be farther away but have a lot more cyborgs
  */
 function calculateCushion(ourFromFactory, targetFactory) {
+  printErr('ourFromFactory, targetFactory: ', ourFromFactory, targetFactory);
   const distanceFromUs = distanceFrom[ourFromFactory][targetFactory];
+  printErr('distanceFromUs: ', distanceFromUs);
 
   // Figure out which of their factories is closest to targetFactory
   const enemyFromFactory = Object.keys(enemyFactories).reduce((a, b) => {
-    return distanceFrom[a][targetFactory] > distanceFrom[b][targetFactory] ? a : b;
+    printErr('a, b: ', a, b);
+    printErr('distanceFrom[a][targetFactory]: ', distanceFrom[a][targetFactory]);
+    printErr('distanceFrom[b][targetFactory]: ', distanceFrom[b][targetFactory]);
+
+    return distanceFrom[a][targetFactory] < distanceFrom[b][targetFactory] ? a : b;
   });
+
 
   const distanceFromThem = distanceFrom[enemyFromFactory][targetFactory];
   printErr('distanceFromThem: ', distanceFromThem);
@@ -164,3 +178,4 @@ function calculateCushion(ourFromFactory, targetFactory) {
 
 initGame();
 playGame();
+
