@@ -1,7 +1,14 @@
 /*
-  By: Mathurshan Vimalesvaran
+  By: Mathurshan Vimalesvaran, Sean Deneen
   Last Modified: Feb 26th, 2017
 */
+
+// TODO:
+// find factory with the most cyborgs -- DONE
+// loop through all other factories
+//  get ratio of prodRate:cyborgsDefending:distanceFromUs
+// get best factory to attack based on how many cyborgs our largest factory has
+// get number of troops to send based on best factory
 
 const FACTORY = 'FACTORY';
 const TROOP = 'TROOP';
@@ -46,13 +53,6 @@ function playGame() {
     const maybeBestFactory = findNearbyEmptyFactory(allFactories, largestFactoryId);
     printErr("maybeBestFactory: ", maybeBestFactory);
 
-
-    // TODO:
-    // find factory with the most cyborgs -- DONE
-    // loop through all other factories
-    //  get ratio of prodRate:cyborgsDefending:distanceFromUs
-    // get best factory to attack based on how many cyborgs our largest factory has
-    // get number of troops to send based on best factory
 
     // To debug: printErr('Debug messages...');
 
@@ -108,6 +108,42 @@ function findNearbyEmptyFactory(allFactories, largestFactoryId) {
 
   return bestFactory;
 }
+
+
+/**
+ * @param fromFactory The factory we are sending cyborgs from
+ * @param targetFactory The factory to send cyborgs to
+ * @return {number} The number of cyborgs to send
+ *
+ * IMPLEMENTATION: (# of cyborgs defending the target factory + 1 + cushion)
+ */
+function calculateNumCyborgsToSend(fromFactory, targetFactory, enemyFactories) {
+  return targetFactory.numCyborgs + 1 + calculateCushion(fromFactory, targetFactory, enemyFactories);
+}
+
+/**
+ *
+ * @param ourFromFactory The factory we are sending cyborgs from
+ * @param targetFactory The factory to send cyborgs to
+ * @param enemyFactories The dictionary of the opponent's factories (maps ids to factories)
+ * @returns {number} The number to cyborgs to act as our "cushion" to avoid being defeated by the opponent at the targetFactory
+ *
+ * IMPLEMENTATION: returns (distance from us / distance from their closest factory) rounded to nearest whole number
+ * TODO should also take into the account of the number of cyborgs they have at their factories. Their biggest threat may be farther away but have a lot more cyborgs
+ */
+function calculateCushion(ourFromFactory, targetFactory, enemyFactories) {
+  const distanceFromUs = distanceFrom[ourFromFactory][targetFactory];
+
+  // Figure out which of their factories is closest to targetFactory
+  const enemyFromFactory = enemyFactories.reduce((a, b) => {
+    distanceFrom[a][targetFactory] > distanceFrom[b][targetFactory] ? a : b;
+  });
+
+  const distanceFromThem = distanceFrom[enemyFromFactory][targetFactory];
+  return Math.round(distanceFromUs / distanceFromThem);
+}
+
+
 
 initGame();
 playGame();
