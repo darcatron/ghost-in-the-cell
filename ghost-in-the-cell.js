@@ -4,7 +4,10 @@
 */
 
 // TODO:
+// L:216 "TODO should take into account any troops they are sending to the targetFactory (seconded. saw situations where this made us lose -matush)"
 // might need to defend a factory we already own (look for any of their troops attacking a weak factory and send reinforcements)
+// consider letting the enemy reduce the number of cyborgs at a neutral factory (may not work)
+// number of cyborgs to send can be split into multiple factories (e.g. 3 factories we own can each send 3 cyborgs instead of 1 factory sending 9)
 
 // Atk once we have BaseArmyPerFactory
 
@@ -22,7 +25,7 @@ const NEUTRAL_ENTITY = 0;
 
 /* Coefficents */
 const RDC = 5; // ratio distance - prioritize shorter distance from us when calculating the ratio
-
+const MBASC = 0.2; // my base army size - reduce the rate at which the base army size increases
 
 const distanceFrom = {}; // factoryA to factoryB
 const allFactories = {};
@@ -98,7 +101,7 @@ function playGame() {
 function getMyBaseArmySize(myFactoryId) {
   const closestFactoryId = findClosestFactoryId(enemyFactories, myFactoryId);
   // prod rate * (current number of our cyborgs) / (dist from their closest factory)
-  return allFactories[myFactoryId].prodRate * getNumCyborgs(MY_ENTITY) / distanceFrom[closestFactoryId][myFactoryId];
+  return allFactories[myFactoryId].prodRate * getNumCyborgs(MY_ENTITY) * MBASC / distanceFrom[closestFactoryId][myFactoryId];
 }
 
 /**
@@ -181,6 +184,7 @@ function chooseTargetFactory(fromFactoryId, factoryRatios) {
 
     // Don't leave fewer than MyBaseArmySize behind at the fromFactory
     printErr(`My base army: ${getMyBaseArmySize(fromFactoryId)}`);
+    printErr(`numCyborgsToSend: ${calculateNumCyborgsToSend(fromFactoryId, bestFactoryId)}`);
     if (calculateNumCyborgsToSend(fromFactoryId, bestFactoryId) + getMyBaseArmySize(fromFactoryId) > myFactories[fromFactoryId].numCyborgs) {
       delete factoryRatios[bestFactoryId];
       bestFactoryId = null;
@@ -212,7 +216,7 @@ function calculateNumCyborgsToSend(fromFactoryId, targetFactoryId) {
  * @returns {number} The number to cyborgs to act as our "cushion" to avoid being defeated by the opponent at the targetFactory
  *
  * IMPLEMENTATION: returns (distance from us / distance from their closest factory) rounded to nearest whole number
- * TODO should take into account any troops they are sending to the targetFactory
+ * TODO should take into account any troops they are sending to the targetFactory (seconded. saw situations where this made us lose -matush)
  * TODO maybe should also take into the account of the number of cyborgs they have at their factories. Their biggest threat may be farther away but have a lot more cyborgs. It would be only a fraction of their numCyborgs since they probably won't send all of them and leave their factory unguarded
  */
 function calculateCushion(ourFromFactoryId, targetFactoryId) {
@@ -220,7 +224,7 @@ function calculateCushion(ourFromFactoryId, targetFactoryId) {
   const enemyFromFactoryId = findClosestFactoryId(enemyFactories, targetFactoryId);
   const distanceFromThem = distanceFrom[enemyFromFactoryId][targetFactoryId];
 
-  return Math.round(distanceFromUs / distanceFromThem);
+  return Math.round(distanceFromUs / Math.max(distanceFromThem, 1));
 }
 
 // Figure out which of their factories is closest to factory given by factoryId
