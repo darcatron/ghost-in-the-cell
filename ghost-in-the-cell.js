@@ -109,10 +109,10 @@ function getNumCyborgs(owner) {
   let ownerFactories;
   let ownerTroops;
 
-  if (owner == MY_ENTITY) {
+  if (owner === MY_ENTITY) {
     ownerFactories = myFactories;
     ownerTroops = myTroops;
-  } else if (owner == ENEMY_ENTITY) {
+  } else if (owner === ENEMY_ENTITY) {
     ownerFactories = enemyFactories;
     ownerTroops = enemyTroops;
   } else {
@@ -165,10 +165,8 @@ function getFactoryRatios(ourFactoryId) {
   for (let i = 0; i < enemyAndNeutralFactoryIds.length; i++) {
     const targetFactoryId = enemyAndNeutralFactoryIds[i];
     const targetFactory = allFactories[targetFactoryId];
-    factoryRatios[i] = targetFactory.prodRate / (targetFactory.numCyborgs + 1) / (distanceFrom[ourFactoryId][targetFactoryId] * RDC);
-    // if (factoryRatios[i] == null) {
-    // printErr(`prod rate: ${targetFactory.prodRate}, num borgs: ${targetFactory.numCyborgs}, distance: ${distanceFrom[ourFactoryId][targetFactoryId]}`);
-    // }
+    factoryRatios[targetFactoryId] = targetFactory.prodRate / (targetFactory.numCyborgs + 1) / (distanceFrom[ourFactoryId][targetFactoryId] * RDC);
+    // printErr(`id: ${targetFactoryId} prod rate: ${targetFactory.prodRate}, num borgs: ${targetFactory.numCyborgs}, distance: ${distanceFrom[ourFactoryId][targetFactoryId]}`);
   }
 
   return factoryRatios;
@@ -228,7 +226,7 @@ function calculateCushion(ourFromFactoryId, targetFactoryId) {
 // Figure out which of their factories is closest to factory given by factoryId
 function findClosestFactoryId(factories, factoryId) {
   return Object.keys(factories).reduce((a, b) => {
-      return distanceFrom[a][factoryId] < distanceFrom[b][factoryId] ? a : b;
+    return distanceFrom[a][factoryId] < distanceFrom[b][factoryId] ? a : b;
   });
 }
 
