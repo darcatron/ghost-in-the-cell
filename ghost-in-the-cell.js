@@ -165,9 +165,9 @@ function getFactoryRatios(ourFactoryId) {
   for (let i = 0; i < enemyAndNeutralFactoryIds.length; i++) {
     const targetFactoryId = enemyAndNeutralFactoryIds[i];
     const targetFactory = allFactories[targetFactoryId];
-    factoryRatios[i] = targetFactory.prodRate / targetFactory.numCyborgs / (distanceFrom[ourFactoryId][targetFactoryId] * RDC);
+    factoryRatios[i] = targetFactory.prodRate / (targetFactory.numCyborgs + 1) / (distanceFrom[ourFactoryId][targetFactoryId] * RDC);
     // if (factoryRatios[i] == null) {
-      printErr(`prod rate: ${targetFactory.prodRate}, num borgs: ${targetFactory.numCyborgs}, distance: ${distanceFrom[ourFactoryId][targetFactoryId]}`);
+    // printErr(`prod rate: ${targetFactory.prodRate}, num borgs: ${targetFactory.numCyborgs}, distance: ${distanceFrom[ourFactoryId][targetFactoryId]}`);
     // }
   }
 
