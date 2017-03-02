@@ -5,6 +5,10 @@
 
 // TODO: (in order of what i think is most important - Matush)
 // L:216 "TODO should take into account any troops they are sending to the targetFactory (seconded. saw situations where this made us make bad moves - Matush)"
+  // a more generalized version of this: all moves that are taking into account a number of cyborgs at a factory should probably predict the numCyborgs that will be there in the X turns it will take our troop to arrive
+    // Includes troops on the way to that factory
+    // Includes production rate of that factory
+// Multiple moves: right now we only get one targetFactory and move a bunch of cyborgs there, but if we have more left to spare we should target another factory!
 // bombs - maybe use them as a retaliation? e.g. if they send a bomb, we'll send a bomb just to start
 // might need to defend a factory we already own (look for any of their troops attacking a weak factory and send reinforcements)
 // consider letting the enemy reduce the number of cyborgs at a neutral factory (may not work)
@@ -67,6 +71,7 @@ function playGame() {
     initTurn(entityCount);
 
     // TODO: revisit using just this as the value to caluclate ratios. my new multi move method looks at all factories when moving troops
+      // Maybe look at the factory with the average closest distance to all of our cyborgs -- Sean
     // get factory owned with the most cyborgs
     const largestFactoryId = Object.keys(myFactories).reduce((a, b) => {
       return myFactories[a].numCyborgs > myFactories[b].numCyborgs ? a : b;
