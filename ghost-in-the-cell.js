@@ -76,49 +76,53 @@ function playGame() {
     // TODO: revisit using just this as the value to caluclate ratios. my new multi move method looks at all factories when moving troops
       // Maybe look at the factory with the average closest distance to all of our cyborgs -- Sean
     // get factory owned with the most cyborgs
-    const largestFactoryId = Object.keys(myFactories).reduce((a, b) => {
+    const fromFactoryId = Object.keys(myFactories).reduce((a, b) => {
       return myFactories[a].numCyborgs > myFactories[b].numCyborgs ? a : b;
     });
 
-    if (myFactories[largestFactoryId].numCyborgs > 0) {
+    if (myFactories[fromFactoryId].numCyborgs > 0) {
 
-      printErr(`largestFactoryId: ${largestFactoryId}`);
-      const factoryRatios = getFactoryRatios(largestFactoryId);
+      printErr(`fromFactoryId: ${fromFactoryId}`);
+      const factoryRatios = getFactoryRatios(fromFactoryId);
 
       printErr(`factoryRatios: ${JSON.stringify(factoryRatios)}`);
 
-      const bestFactoryData = chooseTargetFactory(largestFactoryId, factoryRatios);
+      const myFactoriesWithSpareCyborgs = getMyFactoriesWithSpareCyborgs(myFactories);
+      const totalNumSpareCyborgs = getTotalSpareCyborgs(myFactoriesWithSpareCyborgs);
+      const targetFactoryId = getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs);
 
-      printErr(`bestFactoryId: ${bestFactoryData.bestFactoryId}`);
+      printErr(`targetFactoryId: ${targetFactoryId}`);
 
-      if (bestFactoryData.bestFactoryId) {
+      if (targetFactoryId) {
+        const numCyborgsToSend = calculateNumCyborgsToSend(fromFactoryId, targetFactoryId);
+
         let totalSent = 0;
         // get more moves while the total cyborgs to send isn't reached
-        while (totalSent !== bestFactoryData.numCyborgsToSend) {
-          const numCyborgsStillNeeded = bestFactoryData.numCyborgsToSend - totalSent;
+        while (totalSent !== numCyborgsToSend) {
+          const numCyborgsStillNeeded = numCyborgsToSend - totalSent;
           printErr(`numCyborgsStillNeeded: ${numCyborgsStillNeeded}`);
           // go through each of my spare cyborg factories and get the biggest spare
           let maxSpareCyborgs = 0;
           let maxSpareCyborgsIndex = -1;
-          for (let i = 0; i < bestFactoryData.myFactoriesWithSpareCyborgs.length; i++) {
-            const numSpareCyborgsAtFactory = parseInt(Object.keys(bestFactoryData.myFactoriesWithSpareCyborgs[i])[0]);
+          for (let i = 0; i < myFactoriesWithSpareCyborgs.length; i++) {
+            const numSpareCyborgsAtFactory = parseInt(Object.keys(myFactoriesWithSpareCyborgs[i])[0]);
             if (numSpareCyborgsAtFactory > maxSpareCyborgs) {
               maxSpareCyborgs = numSpareCyborgsAtFactory;
               maxSpareCyborgsIndex = i;
             }
           }
-          printErr(`bestFactoryData.myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex]: ${JSON.stringify(bestFactoryData.myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex])}`);
+          printErr(`myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex]: ${JSON.stringify(myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex])}`);
           if (maxSpareCyborgs > numCyborgsStillNeeded) {
             // add as many as neccesary to the move
-            move = addToMove(move, bestFactoryData.myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex][maxSpareCyborgs], bestFactoryData.bestFactoryId, numCyborgsStillNeeded);
+            move = addToMove(move, myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex][maxSpareCyborgs], targetFactoryId, numCyborgsStillNeeded);
             totalSent += numCyborgsStillNeeded; // essentially a break
           } else {
-            move = addToMove(move, bestFactoryData.myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex][maxSpareCyborgs], bestFactoryData.bestFactoryId, maxSpareCyborgs);
+            move = addToMove(move, myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex][maxSpareCyborgs], targetFactoryId, maxSpareCyborgs);
             totalSent += maxSpareCyborgs;
           }
           printErr(`totalSent: ${totalSent}`);
           // delete that factory from our array so we don't double count
-          bestFactoryData.myFactoriesWithSpareCyborgs.splice(maxSpareCyborgsIndex, 1);
+          myFactoriesWithSpareCyborgs.splice(maxSpareCyborgsIndex, 1);
         }
       }
     }
@@ -140,19 +144,15 @@ function addToMove(moveSoFar, fromFactoryId, targetFactoryId, numCyborgsToSend) 
 
 // PRECONDITION: myFactoryId has to be an id of a factory owned by MY_ENTITY
 function getMyBaseArmySize(myFactoryId) {
-  printErr("factoriesbyowner: " + JSON.stringify(factoriesByOwner));
   if (!factoriesByOwner[MY_ENTITY].hasOwnProperty(myFactoryId)) {
     printErr("Precondition broken in getMyBaseArmySize.");
   }
 
   const closestFactoryId = findClosestFactoryId(factoriesByOwner[ENEMY_ENTITY], myFactoryId);
   // prod rate * (current number of our cyborgs) / (dist from their closest factory)
-  printErr(`distanceFrom[closestFactoryId][myFactoryId]: ${distanceFrom[closestFactoryId][myFactoryId]}`);
 
   if (!distanceFrom[closestFactoryId][myFactoryId]) {
-    printErr("bad distance: " + distanceFrom[closestFactoryId][myFactoryId]);
-    printErr("closestfactoryId: " + closestFactoryId);
-    printErr("myFactoryId: " + myFactoryId);
+    printErr("Divide by zero in getMyBaseArmySize. Probably because the factory ids are the same");
   }
 
   return allFactories[myFactoryId].prodRate * getNumCyborgs(MY_ENTITY) * MBASC / distanceFrom[closestFactoryId][myFactoryId];
@@ -220,32 +220,13 @@ function getFactoryRatios(ourFactoryId) {
   return factoryRatios;
 }
 
-function chooseTargetFactory(fromFactoryId, factoryRatios) {
+
+function getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs) {
   // Don't leave fewer than myBaseArmySize behind at any of my factories
-  const myFactories = factoriesByOwner[MY_ENTITY];
-  const myFactoriesWithSpareCyborgs = Object.keys(myFactories).map((myFactoryId) => {
-    const myBaseArmySize = getMyBaseArmySize(myFactoryId);
-    const cyborgsAtFactory = myFactories[myFactoryId].numCyborgs;
-    printErr(`My base army: ${myBaseArmySize}`);
-    printErr(`cyborgsAtFactory: ${cyborgsAtFactory}`);
-
-    if (cyborgsAtFactory > myBaseArmySize) {
-      // mapping number of spare cyborgs to factoryId makes filtering easier
-      // TODO what if two factories have the same number of spare cyborgs? -- Sean
-      return {[cyborgsAtFactory - Math.round(myBaseArmySize)] : myFactoryId};
-    }
-  }).filter(obj => obj); // filters out null values
-  printErr(`myFactoriesWithSpareCyborgs: ${JSON.stringify(myFactoriesWithSpareCyborgs)}`);
-
-  const totalSpareCyborgs = myFactoriesWithSpareCyborgs.reduce((acc, val) => {
-    // single mapping of spareCyborgs : myFactoryId
-    return acc + parseInt(Object.keys(val)[0]);
-  }, 0);
-  printErr(`totalSpareCyborgs: ${totalSpareCyborgs}`);
-
   let bestFactoryId = null;
   let numCyborgsToSend = null;
   while (bestFactoryId == null) {
+    // Find factory with highest ratio
     bestFactoryId = Object.keys(factoryRatios).reduce((a, b) => {
       return factoryRatios[a] > factoryRatios[b] ? a : b;
     });
@@ -255,7 +236,7 @@ function chooseTargetFactory(fromFactoryId, factoryRatios) {
     printErr(`numCyborgsToSend: ${numCyborgsToSend}`);
 
     // if we don't have enough cyborgs total to spare, try next best target factory
-    if (numCyborgsToSend > totalSpareCyborgs) {
+    if (numCyborgsToSend > totalNumSpareCyborgs) {
       delete factoryRatios[bestFactoryId];
       bestFactoryId = null;
     }
@@ -266,7 +247,28 @@ function chooseTargetFactory(fromFactoryId, factoryRatios) {
     }
   }
 
-  return {bestFactoryId, myFactoriesWithSpareCyborgs, numCyborgsToSend};
+  return bestFactoryId;
+}
+
+
+function getMyFactoriesWithSpareCyborgs(myFactories) {
+  return Object.keys(myFactories).map((myFactoryId) => {
+    const myBaseArmySize = getMyBaseArmySize(myFactoryId);
+    const cyborgsAtFactory = myFactories[myFactoryId].numCyborgs;
+
+    if (cyborgsAtFactory > myBaseArmySize) {
+      // mapping number of spare cyborgs to myFactoryId makes filtering easier
+      // TODO what if two factories have the same number of spare cyborgs? -- Sean
+      return {[cyborgsAtFactory - Math.round(myBaseArmySize)] : myFactoryId};
+    }
+  }).filter(obj => obj); // filters out null values
+}
+
+function getTotalSpareCyborgs(factoriesWithSpareCyborgs) {
+  return factoriesWithSpareCyborgs.reduce((acc, val) => {
+      // single mapping of numSpareCyborgs : myFactoryId
+      return acc + parseInt(Object.keys(val)[0]);
+  }, 0);
 }
 
 /**
