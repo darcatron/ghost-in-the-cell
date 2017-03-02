@@ -33,11 +33,8 @@ const distanceFrom = {}; // factoryA to factoryB
 
 // changes by turn
 let allFactories = {};
-let myFactories = {};
-let enemyFactories = {};
-let allTroops = {};
-let myTroops = {};
-let enemyTroops = {};
+let factoriesByOwner = {};
+let troopsByOwner = {};
 
 function initGame() {
   const factoryCount = parseInt(readline(), 10); // numb of factories (7 <= count <= 15)
@@ -66,9 +63,15 @@ function playGame() {
   printErr('distanceFrom: ', JSON.stringify(distanceFrom));
   while (true) {
     let move = WAIT; // Default to WAIT if we can't choose a move
-
     const entityCount = parseInt(readline(), 10); // numb of entities (factories and troops)
     initTurn(entityCount);
+
+    const myFactories = factoriesByOwner[MY_ENTITY];
+    if (Object.keys(myFactories).length === 0) {
+      // Have to wait if we have no factories
+      print(WAIT);
+      continue;
+    }
 
     // TODO: revisit using just this as the value to caluclate ratios. my new multi move method looks at all factories when moving troops
       // Maybe look at the factory with the average closest distance to all of our cyborgs -- Sean
@@ -137,29 +140,36 @@ function addToMove(moveSoFar, fromFactoryId, targetFactoryId, numCyborgsToSend) 
 
 // PRECONDITION: myFactoryId has to be an id of a factory owned by MY_ENTITY
 function getMyBaseArmySize(myFactoryId) {
-  const closestFactoryId = findClosestFactoryId(enemyFactories, myFactoryId);
+  printErr("factoriesbyowner: " + JSON.stringify(factoriesByOwner));
+  if (!factoriesByOwner[MY_ENTITY].hasOwnProperty(myFactoryId)) {
+    printErr("Precondition broken in getMyBaseArmySize.");
+  }
+
+  const closestFactoryId = findClosestFactoryId(factoriesByOwner[ENEMY_ENTITY], myFactoryId);
   // prod rate * (current number of our cyborgs) / (dist from their closest factory)
   printErr(`distanceFrom[closestFactoryId][myFactoryId]: ${distanceFrom[closestFactoryId][myFactoryId]}`);
+
+  if (!distanceFrom[closestFactoryId][myFactoryId]) {
+    printErr("bad distance: " + distanceFrom[closestFactoryId][myFactoryId]);
+    printErr("closestfactoryId: " + closestFactoryId);
+    printErr("myFactoryId: " + myFactoryId);
+  }
+
   return allFactories[myFactoryId].prodRate * getNumCyborgs(MY_ENTITY) * MBASC / distanceFrom[closestFactoryId][myFactoryId];
 }
 
 /**
- * @param owner Entity as defined at top (MY_ENTITY, ENEMY_ENTITY, etc)
+ * @param owner Entity as defined at top (MY_ENTITY, ENEMY_ENTITY)
  * @returns {number} The number of cyborgs owned by the given owner. Includes factories and troops
  */
 function getNumCyborgs(owner) {
-  let ownerFactories;
-  let ownerTroops;
-
-  if (owner === MY_ENTITY) {
-    ownerFactories = myFactories;
-    ownerTroops = myTroops;
-  } else if (owner === ENEMY_ENTITY) {
-    ownerFactories = enemyFactories;
-    ownerTroops = enemyTroops;
-  } else {
+  if (owner === NEUTRAL_ENTITY) {
     printErr('NEUTRAL ENTITY NOT ALLOWED IN GET NUM CYBORGS');
+    return 0;
   }
+
+  let ownerTroops = troopsByOwner[owner];
+  let ownerFactories = factoriesByOwner[owner];
 
   const numCyborgsInFactories = Object.keys(ownerFactories).map((id) => ownerFactories[id].numCyborgs).reduce((a, b) => a + b, 0);
   const numCyborgsInTroops = Object.keys(ownerTroops).map((id) => ownerTroops[id].numCyborgs).reduce((a, b) => a + b, 0);
@@ -168,11 +178,8 @@ function getNumCyborgs(owner) {
 
 function initTurn(entityCount) {
   allFactories = {};
-  myFactories = {};
-  enemyFactories = {};
-  allTroops = {};
-  myTroops = {};
-  enemyTroops = {};
+  factoriesByOwner = {[MY_ENTITY]: {}, [NEUTRAL_ENTITY]: {}, [ENEMY_ENTITY]: {}};
+  troopsByOwner = {[MY_ENTITY]: {}, [ENEMY_ENTITY]: {}};
 
   for (let i = 0; i < entityCount; i++) {
     const inputs = readline().split(' ');
@@ -189,20 +196,11 @@ function initTurn(entityCount) {
 
 function saveFactory(id, owner, numCyborgs, prodRate) {
   allFactories[id] = {owner, numCyborgs, prodRate};
-  if (owner === MY_ENTITY) {
-    myFactories[id] = {numCyborgs, prodRate};
-  } else if (owner === ENEMY_ENTITY) {
-    enemyFactories[id] = {numCyborgs, prodRate};
-  }
+  factoriesByOwner[owner][id] = {numCyborgs, prodRate};
 }
 
 function saveTroop(id, owner, fromFactoryId, targetFactoryId, numCyborgs, turnsLeftUntilArrival) {
-  allTroops[id] = {owner, fromFactoryId, targetFactoryId, numCyborgs, turnsLeftUntilArrival};
-  if (owner === MY_ENTITY) {
-    myTroops[id] = {fromFactoryId, targetFactoryId, numCyborgs, turnsLeftUntilArrival};
-  } else if (owner === ENEMY_ENTITY) {
-    enemyTroops[id] = {fromFactoryId, targetFactoryId, numCyborgs, turnsLeftUntilArrival};
-  }
+  troopsByOwner[owner][id] = {fromFactoryId, targetFactoryId, numCyborgs, turnsLeftUntilArrival};
 }
 
 // TODO this should take neutral vs enemy into account (enemy's factories will produce more cyborgs in the time we take to arrive)
@@ -224,6 +222,7 @@ function getFactoryRatios(ourFactoryId) {
 
 function chooseTargetFactory(fromFactoryId, factoryRatios) {
   // Don't leave fewer than myBaseArmySize behind at any of my factories
+  const myFactories = factoriesByOwner[MY_ENTITY];
   const myFactoriesWithSpareCyborgs = Object.keys(myFactories).map((myFactoryId) => {
     const myBaseArmySize = getMyBaseArmySize(myFactoryId);
     const cyborgsAtFactory = myFactories[myFactoryId].numCyborgs;
@@ -293,7 +292,7 @@ function calculateNumCyborgsToSend(fromFactoryId, targetFactoryId) {
  */
 function calculateCushion(ourFromFactoryId, targetFactoryId) {
   const distanceFromUs = distanceFrom[ourFromFactoryId][targetFactoryId];
-  const enemyFromFactoryId = findClosestFactoryId(enemyFactories, targetFactoryId);
+  const enemyFromFactoryId = findClosestFactoryId(factoriesByOwner[ENEMY_ENTITY], targetFactoryId);
   const distanceFromThem = distanceFrom[enemyFromFactoryId][targetFactoryId];
 
   return Math.round(distanceFromUs / Math.max(distanceFromThem, 1));
