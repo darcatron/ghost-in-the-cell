@@ -92,6 +92,7 @@ function playGame() {
       const targetFactoryId = getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs);
 
       printErr(`targetFactoryId: ${targetFactoryId}`);
+      printErr(`myFactoriesWithSpareCyborgs: ${JSON.stringify(myFactoriesWithSpareCyborgs)}`);
 
       if (targetFactoryId) {
         const numCyborgsToSend = calculateNumCyborgsToSend(fromFactoryId, targetFactoryId);
@@ -104,20 +105,24 @@ function playGame() {
           // go through each of my spare cyborg factories and get the biggest spare
           let maxSpareCyborgs = 0;
           let maxSpareCyborgsIndex = -1;
+          let maxSpareCyborgsFactoryId = -1;
           for (let i = 0; i < myFactoriesWithSpareCyborgs.length; i++) {
-            const numSpareCyborgsAtFactory = parseInt(Object.keys(myFactoriesWithSpareCyborgs[i])[0]);
+            const factoryId = Object.keys(myFactoriesWithSpareCyborgs[i])[0];
+            const numSpareCyborgsAtFactory = myFactoriesWithSpareCyborgs[i][factoryId];
+            printErr("i: " + i + ", factoryId: " + factoryId + ", numSpareCyborgsAtFactory: " + numSpareCyborgsAtFactory);
             if (numSpareCyborgsAtFactory > maxSpareCyborgs) {
               maxSpareCyborgs = numSpareCyborgsAtFactory;
+              maxSpareCyborgsFactoryId = factoryId;
               maxSpareCyborgsIndex = i;
             }
           }
           printErr(`myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex]: ${JSON.stringify(myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex])}`);
           if (maxSpareCyborgs > numCyborgsStillNeeded) {
             // add as many as neccesary to the move
-            move = addToMove(move, myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex][maxSpareCyborgs], targetFactoryId, numCyborgsStillNeeded);
+            move = addToMove(move, maxSpareCyborgsFactoryId, targetFactoryId, numCyborgsStillNeeded);
             totalSent += numCyborgsStillNeeded; // essentially a break
           } else {
-            move = addToMove(move, myFactoriesWithSpareCyborgs[maxSpareCyborgsIndex][maxSpareCyborgs], targetFactoryId, maxSpareCyborgs);
+            move = addToMove(move, maxSpareCyborgsFactoryId, targetFactoryId, maxSpareCyborgs);
             totalSent += maxSpareCyborgs;
           }
           printErr(`totalSent: ${totalSent}`);
@@ -234,6 +239,7 @@ function getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs) 
     // TODO this is a little wonky because we calculate the number of cyborgs to send based on fromFactoryId when we actually are considering all of our factories when calculating totalSpareCyborgs -- Sean
     numCyborgsToSend = calculateNumCyborgsToSend(fromFactoryId, bestFactoryId);
     printErr(`numCyborgsToSend: ${numCyborgsToSend}`);
+    printErr(`numSpareCyborgs: ${totalNumSpareCyborgs}`);
 
     // if we don't have enough cyborgs total to spare, try next best target factory
     if (numCyborgsToSend > totalNumSpareCyborgs) {
@@ -257,17 +263,15 @@ function getMyFactoriesWithSpareCyborgs(myFactories) {
     const cyborgsAtFactory = myFactories[myFactoryId].numCyborgs;
 
     if (cyborgsAtFactory > myBaseArmySize) {
-      // mapping number of spare cyborgs to myFactoryId makes filtering easier
-      // TODO what if two factories have the same number of spare cyborgs? -- Sean
-      return {[cyborgsAtFactory - Math.round(myBaseArmySize)] : myFactoryId};
+      return {[myFactoryId] : cyborgsAtFactory - Math.round(myBaseArmySize)};
     }
   }).filter(obj => obj); // filters out null values
 }
 
 function getTotalSpareCyborgs(factoriesWithSpareCyborgs) {
   return factoriesWithSpareCyborgs.reduce((acc, val) => {
-      // single mapping of numSpareCyborgs : myFactoryId
-      return acc + parseInt(Object.keys(val)[0]);
+      // single mapping of myFactoryId : numSpareCyborgs
+      return acc + val[Object.keys(val)[0]];
   }, 0);
 }
 
