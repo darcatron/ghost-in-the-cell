@@ -227,6 +227,7 @@ function chooseTargetFactory(fromFactoryId, factoryRatios) {
 
     if (cyborgsAtFactory > myBaseArmySize) {
       // mapping number of spare cyborgs to factoryId makes filtering easier
+      // TODO what if two factories have the same number of spare cyborgs? -- Sean
       return {[cyborgsAtFactory - Math.round(myBaseArmySize)] : myFactoryId};
     }
   }).filter(obj => obj); // filters out null values
@@ -245,6 +246,7 @@ function chooseTargetFactory(fromFactoryId, factoryRatios) {
       return factoryRatios[a] > factoryRatios[b] ? a : b;
     });
 
+    // TODO this is a little wonky because we calculate the number of cyborgs to send based on fromFactoryId when we actually are considering all of our factories when calculating totalSpareCyborgs -- Sean
     numCyborgsToSend = calculateNumCyborgsToSend(fromFactoryId, bestFactoryId);
     printErr(`numCyborgsToSend: ${numCyborgsToSend}`);
 
@@ -254,6 +256,7 @@ function chooseTargetFactory(fromFactoryId, factoryRatios) {
       bestFactoryId = null;
     }
 
+    // TODO Shouldn't this only break if length is 0 since that means we are out of factories to try? -- Sean
     if (Object.keys(factoryRatios).length) {
       break;
     }
