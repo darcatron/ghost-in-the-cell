@@ -150,12 +150,11 @@ function playGame() {
           myFactoriesWithSpareCyborgs.splice(maxSpareCyborgsIndex, 1);
         }
       }
-
-      const maybeBombMove = bombStrategy();
-      if (maybeBombMove) {
-        printErr(`sending bomb move: ${maybeBombMove}`);
-        addToMove(moveSoFar, null, null, null, maybeBombMove);
-      }
+    }
+    const maybeBombMove = bombStrategy();
+    if (maybeBombMove) {
+      printErr(`sending bomb move: ${maybeBombMove}`);
+      move = addToMove(move, null, null, null, maybeBombMove);
     }
 
     print(move);
@@ -169,14 +168,16 @@ function bombStrategy() {
   // bomb early on
 
   if (!retaliatedOnThatBish && Object.keys(bombsByOwner[ENEMY_ENTITY]).length) {
-    enemyFactoriesWithMaxProdRate = Object.keys(factoriesByOwner[ENEMY_ENTITY]).filter((factoryId) => factoriesByOwner[ENEMY_ENTITY][factoryId].prodRate === 3);
-    bestEnemyFactoryId = enemyFactoriesWithMaxProdRate.reduce((a, b) => {
-      factoriesByOwner[ENEMY_ENTITY][a] > factoriesByOwner[ENEMY_ENTITY][b] ? a : b
+    const enemyFactoriesWithMaxProdRate = Object.keys(factoriesByOwner[ENEMY_ENTITY]).filter((factoryId) => factoriesByOwner[ENEMY_ENTITY][factoryId].prodRate === 3);
+    const bestEnemyFactoryId = enemyFactoriesWithMaxProdRate.reduce((a, b) => {
+      return factoriesByOwner[ENEMY_ENTITY][a] > factoriesByOwner[ENEMY_ENTITY][b] ? a : b;
     });
 
     if (bestEnemyFactoryId) {
-      // TODO: assumes we always start at factory 1 and own it forever :D
-      return `BOMB 1 ${bestEnemyFactoryId}`;
+      retaliatedOnThatBish = true;
+      const myStartingFactory = factoriesByOwner[MY_ENTITY][1] ? 1 : 2;
+      // TODO: assumes we always start at factory 1 or 2 and own it forever :D
+      return `BOMB ${myStartingFactory} ${bestEnemyFactoryId}`;
     }
   }
   // if they don't have a prodRate=3 or haven't sent a bomb, don't retaliate
@@ -185,7 +186,7 @@ function bombStrategy() {
 
 function addToMove(moveSoFar, fromFactoryId, targetFactoryId, numCyborgsToSend, bombMove = null) {
   if (moveSoFar === WAIT) {
-    moveSoFar = bombMove ? bombMove : `${MOVE} ${fromFactoryId} ${targetFactoryId} ${numCyborgsToSend}`;
+    moveSoFar = bombMove || `${MOVE} ${fromFactoryId} ${targetFactoryId} ${numCyborgsToSend}`;
   } else {
     moveSoFar += bombMove ? `;${bombMove}` : `;${MOVE} ${fromFactoryId} ${targetFactoryId} ${numCyborgsToSend}`;
   }
@@ -223,8 +224,8 @@ function getNumCyborgs(owner) {
     return 0;
   }
 
-  let ownerTroops = troopsByOwner[owner];
-  let ownerFactories = factoriesByOwner[owner];
+  const ownerTroops = troopsByOwner[owner];
+  const ownerFactories = factoriesByOwner[owner];
 
   const numCyborgsInFactories = Object.keys(ownerFactories).map((id) => ownerFactories[id].numCyborgs).reduce((a, b) => a + b, 0);
   const numCyborgsInTroops = Object.keys(ownerTroops).map((id) => ownerTroops[id].numCyborgs).reduce((a, b) => a + b, 0);
@@ -275,7 +276,7 @@ function getFactoryRatios(ourFactoryId) {
   for (let i = 0; i < enemyAndNeutralFactoryIds.length; i++) {
     const targetFactoryId = enemyAndNeutralFactoryIds[i];
     const targetFactory = allFactories[targetFactoryId];
-    const distance  = distanceFrom[ourFactoryId][targetFactoryId];
+    const distance = distanceFrom[ourFactoryId][targetFactoryId];
     const predictedNumCyborgs = predictNumCyborgs(targetFactoryId, distance);
     factoryRatios[targetFactoryId] = targetFactory.prodRate / (predictedNumCyborgs + 1) / (distance * RDC);
   }
@@ -300,7 +301,7 @@ function predictNumCyborgs(factoryId, numTurns) {
   const ownerTroops = troopsByOwner[owner];
 
   // Add incoming troops that will make it to the factory by the end of numTurns turns
-  for (troopId in ownerTroops) {
+  for (let troopId in ownerTroops) {
     if (ownerTroops[troopId].targetFactoryId === factoryId && ownerTroops[troopId].turnsLeftUntilArrival <= numTurns) {
       futureNumCyborgs += ownerTroops[troopId].numCyborgs;
     }
@@ -365,8 +366,8 @@ function getMyFactoriesWithSpareCyborgs(myFactories) {
 
 function getTotalSpareCyborgs(factoriesWithSpareCyborgs) {
   return factoriesWithSpareCyborgs.reduce((acc, val) => {
-      // single mapping of myFactoryId : numSpareCyborgs
-      return acc + val[Object.keys(val)[0]];
+    // single mapping of myFactoryId : numSpareCyborgs
+    return acc + val[Object.keys(val)[0]];
   }, 0);
 }
 
@@ -398,9 +399,8 @@ function calculateCushion(ourFromFactoryId, targetFactoryId) {
   if (enemyFromFactoryId !== null) {
     const distanceFromThem = distanceFrom[enemyFromFactoryId][targetFactoryId];
     return Math.round(distanceFromUs / Math.max(distanceFromThem, 1));
-  } else {
-    return 0;
   }
+  return 0;
 }
 
 // Figure out which of their factories is closest to factory given by factoryId
@@ -417,10 +417,9 @@ function findClosestFactoryId(factories, factoryId) {
 
 function getNumTroopsEnRoute(targetFactoryId, numTurns) {
   let numTroopsEnRoute = 0;
-  for (troopId in troopsByOwner[MY_ENTITY]) {
-    const troop = troopsByOwner[MY_ENTITY][troopId];
-    if (troop.turnsLeftUntilArrival <= numTurns) {
-      numTroopsEnRoute += troop.numCyborgs;
+  for (let troopId in troopsByOwner[MY_ENTITY]) {
+    if (troopsByOwner[MY_ENTITY][troopId].turnsLeftUntilArrival <= numTurns) {
+      numTroopsEnRoute += troopsByOwner[MY_ENTITY][troopId].numCyborgs;
     }
   }
 
