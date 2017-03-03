@@ -4,6 +4,7 @@
 */
 
 // TODO:
+// might need to defend a factory we already own (look for any of their troops attacking a weak factory and send reinforcements) <--- Escalated to top by Sean
 // Bomb Strategy
   // early on destroy their 3 and take it over
   // maybe use them as a retaliation? e.g. if they send a bomb, we'll send a bomb just to start
@@ -14,12 +15,12 @@
     // if it's close to lots of our factories
     // if we have 10 + (estimated baseArmySize for a prodRate=0 factory assuming it has a prodRate=1) spare troops
       // move the spare troops there and level up that factory
+      // maybe do this if we finish all of our moves but still have 10+ spare at a single factory?
 // Multiple moves
   // if we have more troops to spare after our hitting our best target factory, we should target another factory
 
 
 // BONUS: (visit if we have time)
-// might need to defend a factory we already own (look for any of their troops attacking a weak factory and send reinforcements)
 // consider letting the enemy reduce the number of cyborgs at a neutral factory (may not work)
 
 const FACTORY = 'FACTORY';
@@ -36,9 +37,13 @@ const RDC = 5; // ratio distance - prioritize shorter distance from us when calc
 const MBASC = 0.1; // my base army size - reduce the rate at which the base army size increases
 
 const distanceFrom = {}; // factoryA to factoryB
+const MAX_PROD_RATE = 3;
+const MIN_CYBORGS_DESTROYED_BY_BOMB = 10;
 
 // changes by turn
 let retaliatedOnThatBish = false;
+let sentInitialBomb = false;
+
 let allFactories = {};
 let factoriesByOwner = {};
 let bombsByOwner = {};
@@ -164,20 +169,85 @@ function playGame() {
 
 /* Potentially returns a bomb move */
 function bombStrategy() {
-  // TODO:
-  // bomb early on
+  if (Object.keys(factoriesByOwner[ENEMY_ENTITY]).length > 0) {
+    let maybeBombMove = null;
+    if (!sentInitialBomb) {
+      maybeBombMove = getPossibleInitalBombMove();
+      printErr("maybeBombMove: " + maybeBombMove);
+    }
 
-  if (!retaliatedOnThatBish && Object.keys(bombsByOwner[ENEMY_ENTITY]).length) {
-    const enemyFactoriesWithMaxProdRate = Object.keys(factoriesByOwner[ENEMY_ENTITY]).filter((factoryId) => factoriesByOwner[ENEMY_ENTITY][factoryId].prodRate === 3);
-    const bestEnemyFactoryId = enemyFactoriesWithMaxProdRate.reduce((a, b) => {
-      return factoriesByOwner[ENEMY_ENTITY][a] > factoriesByOwner[ENEMY_ENTITY][b] ? a : b;
+    if (maybeBombMove) {
+      return maybeBombMove;
+    } else {
+      return getPossibleRetaliationBomb();
+    }
+  } else {
+    return null; // no factories to attack
+  }
+}
+
+function getPossibleInitalBombMove() {
+  const targetFactoryId = getPossibleInitialBombTarget(factoriesByOwner[ENEMY_ENTITY]);
+  if (targetFactoryId) {
+    const fromFactoryId = findClosestFactoryId(factoriesByOwner[MY_ENTITY], targetFactoryId);
+    sentInitialBomb = true;
+    return `${BOMB} ${fromFactoryId} ${targetFactoryId}`;
+  } else {
+    return null;
+  }
+}
+
+/**
+ * Looks for a good target to bomb close to the start of the game. Goal is to decimate a high production factory
+ * with close to MIN_CYBORGS_DESTROYED_BY_BOMB cyborgs currently at the factory
+ *
+ * TODO if we want to actually attack this factory while it is down, we should try to target a close one
+ *
+ * @param factories Factories to consider as target
+ * @returns targetFactoryId if a good one exists, null otherwise
+ */
+function getPossibleInitialBombTarget(factories) {
+  const threshold = 3; // Defines range for numCyborgs for the targetFactory. As of now it is MIN_CYBORGS_DESTROYED_BY_BOMB +/- threshold
+
+  let possibleTargetFactoryIds = Object.keys(factories).filter((factoryId) => {
+    const numEnemyCyborgs = factories[factoryId].numCyborgs;
+    numEnemyCyborgs >= MIN_CYBORGS_DESTROYED_BY_BOMB - threshold && numEnemyCyborgs <= MIN_CYBORGS_DESTROYED_BY_BOMB + threshold
+  });
+
+  if (possibleTargetFactoryIds.length) {
+    let orderedTargetFactoryIds = possibleTargetFactoryIds.sort(function (id1, id2) {
+      if (factories[id1].prodRate > factories[id2].prodRate) {
+        return -1; // id1 is better
+      } else {
+        return 1; // id2 is equal or better
+      }
     });
 
-    if (bestEnemyFactoryId) {
-      retaliatedOnThatBish = true;
-      const myStartingFactory = factoriesByOwner[MY_ENTITY][1] ? 1 : 2;
-      // TODO: assumes we always start at factory 1 or 2 and own it forever :D
-      return `BOMB ${myStartingFactory} ${bestEnemyFactoryId}`;
+    return possibleTargetFactoryIds[0]; // Ordered so first one is highest prod rate
+  } else {
+    return null;
+  }
+}
+
+/**
+ * Send a bomb back if the enemy sent one at us and we have a good target to it
+ *
+ * @returns bomb move if we go for it, null otherwise
+ */
+function getPossibleRetaliationBomb() {
+  if (!retaliatedOnThatBish && Object.keys(bombsByOwner[ENEMY_ENTITY]).length) {
+    const enemyFactoriesWithMaxProdRate = Object.keys(factoriesByOwner[ENEMY_ENTITY]).filter((factoryId) => factoriesByOwner[ENEMY_ENTITY][factoryId].prodRate === MAX_PROD_RATE);
+    if (!isEmpty(enemyFactoriesWithMaxProdRate)) {
+      const bestEnemyFactoryId = enemyFactoriesWithMaxProdRate.reduce((a, b) => {
+          return factoriesByOwner[ENEMY_ENTITY][a] > factoriesByOwner[ENEMY_ENTITY][b] ? a : b;
+      });
+
+      if (bestEnemyFactoryId) {
+        retaliatedOnThatBish = true;
+        const myStartingFactory = factoriesByOwner[MY_ENTITY][1] ? 1 : 2;
+        // TODO: assumes we always start at factory 1 or 2 and own it forever :D
+        return `${BOMB} ${myStartingFactory} ${bestEnemyFactoryId}`;
+      }
     }
   }
   // if they don't have a prodRate=3 or haven't sent a bomb, don't retaliate
@@ -190,7 +260,7 @@ function addToMove(moveSoFar, fromFactoryId, targetFactoryId, numCyborgsToSend, 
   } else {
     moveSoFar += bombMove ? `;${bombMove}` : `;${MOVE} ${fromFactoryId} ${targetFactoryId} ${numCyborgsToSend}`;
   }
-  printErr(`moveSoFar: ${moveSoFar}`);
+  // printErr(`moveSoFar: ${moveSoFar}`);
   return moveSoFar;
 }
 
@@ -324,8 +394,8 @@ function getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs) 
     // TODO this is a little wonky because we calculate the number of cyborgs to send based on fromFactoryId when we actually are considering all of our factories when calculating totalSpareCyborgs -- Sean
     numCyborgsToSend = calculateNumCyborgsToSend(fromFactoryId, bestFactoryId);
 
-    printErr(`numCyborgsToSend: ${numCyborgsToSend}`);
-    printErr(`numSpareCyborgs: ${totalNumSpareCyborgs}`);
+    // printErr(`numCyborgsToSend: ${numCyborgsToSend}`);
+    // printErr(`numSpareCyborgs: ${totalNumSpareCyborgs}`);
 
     // if we already have enough cyborgs en route, don't bother
     if (getNumTroopsEnRoute(bestFactoryId, distanceFrom[fromFactoryId][bestFactoryId])) {
@@ -424,6 +494,10 @@ function getNumTroopsEnRoute(targetFactoryId, numTurns) {
   }
 
   return numTroopsEnRoute;
+}
+
+function isEmpty(dict) {
+  return Object.keys(dict).length === 0;
 }
 
 initGame();
