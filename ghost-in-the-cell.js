@@ -69,8 +69,22 @@ function playGame() {
       continue;
     }
 
+    const myFactoriesWithSpareCyborgs = getMyFactoriesWithSpareCyborgs(myFactories);
+    const totalNumSpareCyborgs = getTotalSpareCyborgs(myFactoriesWithSpareCyborgs);
+
+    // PROPOSED PSEUDOCODE FOR MULTI ACTION STRATEGY
+    // while totalNumSpareCyborgs > 0 and ratios.length > 0
+      // choose target factory based on ratios that replace distance between fromFactory and targetFactory with the average closeness to our spare cyborgs
+      // For each factory with spare cyborgs (fromFactory)
+        // get num cyborgs to send to target factory
+        // if num cyborgs to send < totalNumSpareCyborgs
+          // Add move between fromFactory and targetFactory
+          // Decrement myFactoriesWithSpareCyborgs as appropriate
+          // Recalculate totalNumSpareCyborgs
+        // else
+          // Remove target factory from ratios
+
     // TODO: revisit using just this as the value to caluclate ratios. my new multi move method looks at all factories when moving troops
-      // Maybe look at the factory with the average closest distance to all of our cyborgs -- Sean
     // get factory owned with the most cyborgs
     const fromFactoryId = Object.keys(myFactories).reduce((a, b) => {
       return myFactories[a].numCyborgs > myFactories[b].numCyborgs ? a : b;
@@ -83,8 +97,6 @@ function playGame() {
 
       printErr(`factoryRatios: ${JSON.stringify(factoryRatios)}`);
 
-      const myFactoriesWithSpareCyborgs = getMyFactoriesWithSpareCyborgs(myFactories);
-      const totalNumSpareCyborgs = getTotalSpareCyborgs(myFactoriesWithSpareCyborgs);
       const targetFactoryId = getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs);
 
       printErr(`targetFactoryId: ${targetFactoryId}`);
@@ -240,7 +252,7 @@ function predictNumCyborgs(factoryId, numTurns) {
   futureNumCyborgs += numTurns * factory.prodRate; // add production over time
   const ownerTroops = troopsByOwner[owner];
 
-  // Add incoming troops that will make it to the targetFactory by the end of numTurns turns
+  // Add incoming troops that will make it to the factory by the end of numTurns turns
   for (troopId in ownerTroops) {
     if (ownerTroops[troopId].targetFactoryId === factoryId && ownerTroops[troopId].turnsLeftUntilArrival <= numTurns) {
       futureNumCyborgs += ownerTroops[troopId].numCyborgs;
@@ -274,9 +286,11 @@ function getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs) 
 
     // TODO Shouldn't this only break if length is 0 since that means we are out of factories to try? -- Sean
     // I think we can remove this now that I added another condition to the while loop
-    if (Object.keys(factoryRatios).length) {
-      break;
-    }
+    // printErr("length: " + Object.keys(factoryRatios).length);
+    // if (Object.keys(factoryRatios).length) {
+    //   printErr("breaking");
+    //   break;
+    // }
   }
 
   return bestFactoryId;
