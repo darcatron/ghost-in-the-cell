@@ -1,17 +1,26 @@
 /*
   By: Mathurshan Vimalesvaran, Sean Deneen
-  Last Modified: Feb 27th, 2017
+  Last Modified: Mar 2nd, 2017
 */
 
-// TODO: (in order of what i think is most important - Matush)
-// Multiple moves: right now we only get one targetFactory and move a bunch of cyborgs there, but if we have more left to spare we should target another factory!
-// bombs - maybe use them as a retaliation? e.g. if they send a bomb, we'll send a bomb just to start
+// TODO:
+// Bomb Strategy
+  // early on destroy their 3 and take it over
+  // maybe use them as a retaliation? e.g. if they send a bomb, we'll send a bomb just to start
+  // to consider - if the enemy throws bomb, determine where it's likely to go and distribute troops and send reinforcements/swap troops
+// Factory upgrade strategy
+  // valuable for prodRate=0 factories
+    // if it's far away from enemies
+    // if it's close to lots of our factories
+    // if we have 10 + (estimated baseArmySize for a prodRate=0 factory assuming it has a prodRate=1) spare troops
+      // move the spare troops there and level up that factory
+// Multiple moves
+  // if we have more troops to spare after our hitting our best target factory, we should target another factory
+
+
+// BONUS: (visit if we have time)
 // might need to defend a factory we already own (look for any of their troops attacking a weak factory and send reinforcements)
 // consider letting the enemy reduce the number of cyborgs at a neutral factory (may not work)
-
-
-// BaseArmyPerFactory = prod rate * (current num cyborgs) / (dist from their closest factory)
-    // TODO may want to incorporate: target factory's prod rate, num cyborgs that enemy has (atk vs def)
 
 const FACTORY = 'FACTORY';
 const TROOP = 'TROOP';
@@ -249,7 +258,9 @@ function predictNumCyborgs(factoryId, numTurns) {
   const factory = allFactories[factoryId];
   const owner = factory.owner;
   let futureNumCyborgs = factory.numCyborgs; // current num 'borgs
-  futureNumCyborgs += numTurns * factory.prodRate; // add production over time
+  if (owner !== NEUTRAL_ENTITY) {
+    futureNumCyborgs += numTurns * factory.prodRate; // add production over time
+  }
   const ownerTroops = troopsByOwner[owner];
 
   // Add incoming troops that will make it to the factory by the end of numTurns turns
@@ -300,6 +311,7 @@ function getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs) 
 function getMyFactoriesWithSpareCyborgs(myFactories) {
   return Object.keys(myFactories).map((myFactoryId) => {
     const myBaseArmySize = getMyBaseArmySize(myFactoryId);
+    printErr('myBaseArmySize: ' + myBaseArmySize);
     const cyborgsAtFactory = myFactories[myFactoryId].numCyborgs;
 
     if (cyborgsAtFactory > myBaseArmySize) {
