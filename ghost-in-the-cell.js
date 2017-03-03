@@ -38,6 +38,7 @@ const MBASC = 0.1; // my base army size - reduce the rate at which the base army
 const distanceFrom = {}; // factoryA to factoryB
 
 // changes by turn
+let retaliatedOnThatBish = false;
 let allFactories = {};
 let factoriesByOwner = {};
 let bombsByOwner = {};
@@ -149,6 +150,12 @@ function playGame() {
           myFactoriesWithSpareCyborgs.splice(maxSpareCyborgsIndex, 1);
         }
       }
+
+      const maybeBombMove = bombStrategy();
+      if (maybeBombMove) {
+        printErr(`sending bomb move: ${maybeBombMove}`);
+        addToMove(moveSoFar, null, null, null, maybeBombMove);
+      }
     }
 
     print(move);
@@ -156,11 +163,31 @@ function playGame() {
   }
 }
 
-function addToMove(moveSoFar, fromFactoryId, targetFactoryId, numCyborgsToSend) {
+/* Potentially returns a bomb move */
+function bombStrategy() {
+  // TODO:
+  // bomb early on
+
+  if (!retaliatedOnThatBish && Object.keys(bombsByOwner[ENEMY_ENTITY]).length) {
+    enemyFactoriesWithMaxProdRate = Object.keys(factoriesByOwner[ENEMY_ENTITY]).filter((factoryId) => factoriesByOwner[ENEMY_ENTITY][factoryId].prodRate === 3);
+    bestEnemyFactoryId = enemyFactoriesWithMaxProdRate.reduce((a, b) => {
+      factoriesByOwner[ENEMY_ENTITY][a] > factoriesByOwner[ENEMY_ENTITY][b] ? a : b
+    });
+
+    if (bestEnemyFactoryId) {
+      // TODO: assumes we always start at factory 1 and own it forever :D
+      return `BOMB 1 ${bestEnemyFactoryId}`;
+    }
+  }
+  // if they don't have a prodRate=3 or haven't sent a bomb, don't retaliate
+  return null;
+}
+
+function addToMove(moveSoFar, fromFactoryId, targetFactoryId, numCyborgsToSend, bombMove = null) {
   if (moveSoFar === WAIT) {
-    moveSoFar = `${MOVE} ${fromFactoryId} ${targetFactoryId} ${numCyborgsToSend}`;
+    moveSoFar = bombMove ? bombMove : `${MOVE} ${fromFactoryId} ${targetFactoryId} ${numCyborgsToSend}`;
   } else {
-    moveSoFar += `;${MOVE} ${fromFactoryId} ${targetFactoryId} ${numCyborgsToSend}`;
+    moveSoFar += bombMove ? `;${bombMove}` : `;${MOVE} ${fromFactoryId} ${targetFactoryId} ${numCyborgsToSend}`;
   }
   printErr(`moveSoFar: ${moveSoFar}`);
   return moveSoFar;
@@ -235,7 +262,7 @@ function saveTroop(id, owner, fromFactoryId, targetFactoryId, numCyborgs, turnsL
 }
 
 function saveBomb(id, owner, fromFactoryId, targetFactoryId, turnsLeftUntilArrival) {
-  bombsByOwner[owner] = {fromFactoryId, targetFactoryId, turnsLeftUntilArrival};
+  bombsByOwner[owner][id] = {fromFactoryId, targetFactoryId, turnsLeftUntilArrival};
 }
 
 // TODO this should take neutral vs enemy into account (enemy's factories will produce more cyborgs in the time we take to arrive)
