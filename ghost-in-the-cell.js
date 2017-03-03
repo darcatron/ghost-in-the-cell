@@ -15,6 +15,7 @@
 
 const FACTORY = 'FACTORY';
 const TROOP = 'TROOP';
+const BOMB = 'BOMB';
 const MOVE = 'MOVE';
 const WAIT = 'WAIT';
 const MY_ENTITY = 1;
@@ -30,6 +31,7 @@ const distanceFrom = {}; // factoryA to factoryB
 // changes by turn
 let allFactories = {};
 let factoriesByOwner = {};
+let bombsByOwner = {};
 let troopsByOwner = {};
 
 function initGame() {
@@ -197,6 +199,7 @@ function initTurn(entityCount) {
   allFactories = {};
   factoriesByOwner = {[MY_ENTITY]: {}, [NEUTRAL_ENTITY]: {}, [ENEMY_ENTITY]: {}};
   troopsByOwner = {[MY_ENTITY]: {}, [ENEMY_ENTITY]: {}};
+  bombsByOwner = {[MY_ENTITY]: {}, [ENEMY_ENTITY]: {}};
 
   for (let i = 0; i < entityCount; i++) {
     const inputs = readline().split(' ');
@@ -207,6 +210,8 @@ function initTurn(entityCount) {
       saveFactory(entityId, parseInt(inputs[2], 10), parseInt(inputs[3], 10), parseInt(inputs[4], 10));
     } else if (entityType === TROOP) {
       saveTroop(entityId, parseInt(inputs[2], 10), parseInt(inputs[3], 10), parseInt(inputs[4], 10), parseInt(inputs[5], 10), parseInt(inputs[6], 10));
+    } else if (entityType === BOMB) {
+      saveBomb(entityId, parseInt(inputs[2], 10), parseInt(inputs[3], 10), parseInt(inputs[4], 10), parseInt(inputs[5], 10));
     }
   }
 }
@@ -218,6 +223,10 @@ function saveFactory(id, owner, numCyborgs, prodRate) {
 
 function saveTroop(id, owner, fromFactoryId, targetFactoryId, numCyborgs, turnsLeftUntilArrival) {
   troopsByOwner[owner][id] = {fromFactoryId, targetFactoryId, numCyborgs, turnsLeftUntilArrival};
+}
+
+function saveBomb(id, owner, fromFactoryId, targetFactoryId, turnsLeftUntilArrival) {
+  bombsByOwner[owner] = {fromFactoryId, targetFactoryId, turnsLeftUntilArrival};
 }
 
 // TODO this should take neutral vs enemy into account (enemy's factories will produce more cyborgs in the time we take to arrive)
