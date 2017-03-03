@@ -4,10 +4,6 @@
 */
 
 // TODO: (in order of what i think is most important - Matush)
-// L:216 "TODO should take into account any troops they are sending to the targetFactory (seconded. saw situations where this made us make bad moves - Matush)"
-  // a more generalized version of this: all moves that are taking into account a number of cyborgs at a factory should probably predict the numCyborgs that will be there in the X turns it will take our troop to arrive
-    // Includes troops on the way to that factory
-    // Includes production rate of that factory
 // Multiple moves: right now we only get one targetFactory and move a bunch of cyborgs there, but if we have more left to spare we should target another factory!
 // bombs - maybe use them as a retaliation? e.g. if they send a bomb, we'll send a bomb just to start
 // might need to defend a factory we already own (look for any of their troops attacking a weak factory and send reinforcements)
@@ -156,6 +152,10 @@ function getMyBaseArmySize(myFactoryId) {
   const closestFactoryId = findClosestFactoryId(factoriesByOwner[ENEMY_ENTITY], myFactoryId);
   // prod rate * (current number of our cyborgs) / (dist from their closest factory)
 
+  if (closestFactoryId === null) { // No factories left
+    return allFactories[myFactoryId].prodRate * getNumCyborgs(MY_ENTITY) * MBASC;
+  }
+
   if (!distanceFrom[closestFactoryId][myFactoryId]) {
     printErr("Divide by zero in getMyBaseArmySize. Probably because the factory ids are the same");
   }
@@ -255,7 +255,7 @@ function getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs) 
   // Don't leave fewer than myBaseArmySize behind at any of my factories
   let bestFactoryId = null;
   let numCyborgsToSend = null;
-  while (bestFactoryId == null) {
+  while (bestFactoryId == null && Object.keys(factoryRatios).length > 0) {
     // Find factory with highest ratio
     bestFactoryId = Object.keys(factoryRatios).reduce((a, b) => {
       return factoryRatios[a] > factoryRatios[b] ? a : b;
@@ -273,6 +273,7 @@ function getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs) 
     }
 
     // TODO Shouldn't this only break if length is 0 since that means we are out of factories to try? -- Sean
+    // I think we can remove this now that I added another condition to the while loop
     if (Object.keys(factoryRatios).length) {
       break;
     }
@@ -317,7 +318,7 @@ function calculateNumCyborgsToSend(fromFactoryId, targetFactoryId) {
  *
  * @param ourFromFactoryId The id of the factory we are sending cyborgs from
  * @param targetFactoryId The the id of the factory to send cyborgs to
- * @returns {number} The number to cyborgs to act as our "cushion" to avoid being defeated by the opponent at the targetFactory
+ * @returns {number/null} The number to cyborgs to act as our "cushion" to avoid being defeated by the opponent at the targetFactory, null if no enemy factories exist
  *
  * IMPLEMENTATION: returns (distance from us / distance from their closest factory) rounded to nearest whole number
  * TODO maybe should also take into the account of the number of cyborgs they have at their factories. Their biggest threat may be farther away but have a lot more cyborgs. It would be only a fraction of their numCyborgs since they probably won't send all of them and leave their factory unguarded
@@ -325,13 +326,20 @@ function calculateNumCyborgsToSend(fromFactoryId, targetFactoryId) {
 function calculateCushion(ourFromFactoryId, targetFactoryId) {
   const distanceFromUs = distanceFrom[ourFromFactoryId][targetFactoryId];
   const enemyFromFactoryId = findClosestFactoryId(factoriesByOwner[ENEMY_ENTITY], targetFactoryId);
-  const distanceFromThem = distanceFrom[enemyFromFactoryId][targetFactoryId];
-
-  return Math.round(distanceFromUs / Math.max(distanceFromThem, 1));
+  if (enemyFromFactoryId !== null) {
+    const distanceFromThem = distanceFrom[enemyFromFactoryId][targetFactoryId];
+    return Math.round(distanceFromUs / Math.max(distanceFromThem, 1));
+  } else {
+    return 0;
+  }
 }
 
 // Figure out which of their factories is closest to factory given by factoryId
 function findClosestFactoryId(factories, factoryId) {
+  if (Object.keys(factories).length === 0) {
+    return null;
+  }
+
   return Object.keys(factories).reduce((a, b) => {
     return distanceFrom[a][factoryId] < distanceFrom[b][factoryId] ? a : b;
   });
