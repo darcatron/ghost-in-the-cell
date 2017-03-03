@@ -284,8 +284,15 @@ function getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs) 
 
     // TODO this is a little wonky because we calculate the number of cyborgs to send based on fromFactoryId when we actually are considering all of our factories when calculating totalSpareCyborgs -- Sean
     numCyborgsToSend = calculateNumCyborgsToSend(fromFactoryId, bestFactoryId);
+
     printErr(`numCyborgsToSend: ${numCyborgsToSend}`);
     printErr(`numSpareCyborgs: ${totalNumSpareCyborgs}`);
+
+    // if we already have enough cyborgs en route, don't bother
+    if (getNumTroopsEnRoute(bestFactoryId, distanceFrom[fromFactoryId][bestFactoryId])) {
+      delete factoryRatios[bestFactoryId];
+      bestFactoryId = null;
+    }
 
     // if we don't have enough cyborgs total to spare, try next best target factory
     if (numCyborgsToSend > totalNumSpareCyborgs) {
@@ -366,6 +373,19 @@ function findClosestFactoryId(factories, factoryId) {
   return Object.keys(factories).reduce((a, b) => {
     return distanceFrom[a][factoryId] < distanceFrom[b][factoryId] ? a : b;
   });
+}
+
+
+function getNumTroopsEnRoute(targetFactoryId, numTurns) {
+  let numTroopsEnRoute = 0;
+  for (troopId in troopsByOwner[MY_ENTITY]) {
+    const troop = troopsByOwner[MY_ENTITY][troopId];
+    if (troop.turnsLeftUntilArrival <= numTurns) {
+      numTroopsEnRoute += troop.numCyborgs;
+    }
+  }
+
+  return numTroopsEnRoute;
 }
 
 initGame();
