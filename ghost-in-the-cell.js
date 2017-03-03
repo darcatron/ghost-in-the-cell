@@ -218,11 +218,36 @@ function getFactoryRatios(ourFactoryId) {
   for (let i = 0; i < enemyAndNeutralFactoryIds.length; i++) {
     const targetFactoryId = enemyAndNeutralFactoryIds[i];
     const targetFactory = allFactories[targetFactoryId];
-    factoryRatios[targetFactoryId] = targetFactory.prodRate / (targetFactory.numCyborgs + 1) / (distanceFrom[ourFactoryId][targetFactoryId] * RDC);
-    // printErr(`id: ${targetFactoryId} prod rate: ${targetFactory.prodRate}, num borgs: ${targetFactory.numCyborgs}, distance: ${distanceFrom[ourFactoryId][targetFactoryId]}`);
+    const distance  = distanceFrom[ourFactoryId][targetFactoryId];
+    const predictedNumCyborgs = predictNumCyborgs(targetFactoryId, distance);
+    factoryRatios[targetFactoryId] = targetFactory.prodRate / (predictedNumCyborgs + 1) / (distance * RDC);
   }
 
   return factoryRatios;
+}
+
+/**
+ * Predicts the numCyborgs at a factory in numTurns turns. Takes into account the current numCyborgs, incoming troops of the current owner, and the production rate
+ * TODO: this assumes that the factory will not change owners in this time (doesn't take into account any of the non-owner's incoming troops)
+ *
+ * @param factoryId
+ * @param numTurns
+ */
+function predictNumCyborgs(factoryId, numTurns) {
+  const factory = allFactories[factoryId];
+  const owner = factory.owner;
+  let futureNumCyborgs = factory.numCyborgs; // current num 'borgs
+  futureNumCyborgs += numTurns * factory.prodRate; // add production over time
+  const ownerTroops = troopsByOwner[owner];
+
+  // Add incoming troops that will make it to the targetFactory by the end of numTurns turns
+  for (troopId in ownerTroops) {
+    if (ownerTroops[troopId].targetFactoryId === factoryId && ownerTroops[troopId].turnsLeftUntilArrival <= numTurns) {
+      futureNumCyborgs += ownerTroops[troopId].numCyborgs;
+    }
+  }
+
+  return futureNumCyborgs;
 }
 
 
@@ -280,10 +305,12 @@ function getTotalSpareCyborgs(factoriesWithSpareCyborgs) {
  * @param targetFactoryId The id of the factory to send cyborgs to
  * @return {number} The number of cyborgs to send
  *
- * IMPLEMENTATION: (# of cyborgs defending the target factory + 1 + cushion)
+ * IMPLEMENTATION: (predicted # of cyborgs defending the target factory on arrival + 1 + cushion)
  */
 function calculateNumCyborgsToSend(fromFactoryId, targetFactoryId) {
-  return allFactories[targetFactoryId].numCyborgs + 1 + calculateCushion(fromFactoryId, targetFactoryId);
+  const distance = distanceFrom[fromFactoryId][targetFactoryId];
+  const predictedNumCyborgs = predictNumCyborgs(targetFactoryId, distance);
+  return predictedNumCyborgs + 1 + calculateCushion(fromFactoryId, targetFactoryId);
 }
 
 /**
@@ -293,7 +320,6 @@ function calculateNumCyborgsToSend(fromFactoryId, targetFactoryId) {
  * @returns {number} The number to cyborgs to act as our "cushion" to avoid being defeated by the opponent at the targetFactory
  *
  * IMPLEMENTATION: returns (distance from us / distance from their closest factory) rounded to nearest whole number
- * TODO should take into account any troops they are sending to the targetFactory (seconded. saw situations where this made us make bad moves -matush)
  * TODO maybe should also take into the account of the number of cyborgs they have at their factories. Their biggest threat may be farther away but have a lot more cyborgs. It would be only a fraction of their numCyborgs since they probably won't send all of them and leave their factory unguarded
  */
 function calculateCushion(ourFromFactoryId, targetFactoryId) {
