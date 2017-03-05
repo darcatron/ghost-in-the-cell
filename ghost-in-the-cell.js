@@ -8,7 +8,7 @@
 // Bomb Strategy
   // early on destroy their 3 and take it over
   // maybe use them as a retaliation? e.g. if they send a bomb, we'll send a bomb just to start
-  // if the enemy throws bomb, determine where it's likely to go and distribute troops and send reinforcements/swap troops (HIGH PRIORITY as well)
+  // if the enemy bomb hits, don't count the prod rate for 5 turns when predicting num cyborgs
 // Factory upgrade strategy
   // valuable for prodRate=0 factories
     // if it's far away from enemies
@@ -16,8 +16,7 @@
     // if we have 10 + (estimated baseArmySize for a prodRate=0 factory assuming it has a prodRate=1) spare troops
       // move the spare troops there and level up that factory
       // maybe do this if we finish all of our moves but still have 10+ spare at a single factory?
-// Multiple moves
-  // if we have more troops to spare after our hitting our best target factory, we should target another factory
+
 
 // BONUS: (visit if we have time)
 // consider letting the enemy reduce the number of cyborgs at a neutral factory (may not work)
@@ -38,6 +37,7 @@ const MBASC = 0.07; // my base army size - reduce the rate at which the base arm
 const distanceFrom = {}; // factoryA to factoryB
 const MAX_PROD_RATE = 3;
 const MIN_CYBORGS_DESTROYED_BY_BOMB = 10;
+const CYBORGS_PER_UPGRADE = 10;
 
 // changes by turn
 let retaliatedOnThatBish = false;
@@ -88,10 +88,15 @@ function playGame() {
 
     const myFactoriesWithSpareCyborgs = getMyFactoriesWithSpareCyborgs(myFactories);
     let totalNumSpareCyborgs = getTotalSpareCyborgs(myFactoriesWithSpareCyborgs);
-
+    const factoryRatios = getFactoryRatios(myFactoriesWithSpareCyborgs, totalNumSpareCyborgs);
     printErr(`factoryRatios: ${JSON.stringify(factoryRatios)}`);
-    
-    let targetFactoryId = getAttackTargetFactoryId(myFactoriesWithSpareCyborgs, factoryRatios, totalNumSpareCyborgs);
+
+    // Go for a single defend first before looking to attack
+    let targetFactoryId = getDefendTargetFactoryId(myFactoriesWithSpareCyborgs, totalNumSpareCyborgs);
+
+    if (!targetFactoryId) {
+      targetFactoryId = getAttackTargetFactoryId(myFactoriesWithSpareCyborgs, factoryRatios, totalNumSpareCyborgs);
+    }
 
     while (targetFactoryId) {
       printErr("targetFactoryId: " + targetFactoryId);
@@ -108,13 +113,75 @@ function playGame() {
       move = addToMove(move, null, null, null, maybeBombMove);
     }
 
+    if (move == WAIT) {
+      printErr("TRYING UPGRADE!");
+      // Stupid strategy... instead of waiting, increment our largest factory with prod rate < 3
+      let possibleUpgradeMove = tryFactoryUpgrade();
+      if (possibleUpgradeMove) {
+        move = possibleUpgradeMove;
+      }
+    }
+
     print(move);
     // To debug: printErr('Debug messages...');
   }
 }
 
+function tryFactoryUpgrade() {
+  printErr("factoriesByOwner[MY_ENTITY]: " + JSON.stringify(factoriesByOwner[MY_ENTITY]));
+  const possibleIds = Object.keys(factoriesByOwner[MY_ENTITY]).filter((factoryId) => {
+    return factoriesByOwner[MY_ENTITY][factoryId].prodRate < MAX_PROD_RATE && factoriesByOwner[MY_ENTITY][factoryId].numCyborgs >= CYBORGS_PER_UPGRADE;
+  });
+
+  printErr("possibleIds: " + JSON.stringify(possibleIds));
+
+  if (possibleIds.length) {
+    bestFactoryId = possibleIds.reduce((id1, id2) => {
+      return factoriesByOwner[MY_ENTITY][id1] > factoriesByOwner[MY_ENTITY][id2] ? id1 : id2;
+    });
+    return `INC ${bestFactoryId}`;
+  }
+
+  return null;
+}
+
+// Returns factoryId of factory to defend if a good one exists
+// Returns null if no good factories to defend are found
+function getDefendTargetFactoryId(myFactoriesWithSpareCyborgs, totalNumSpareCyborgs) {
+  const possibleDefendFactories = {}; // going to be a map of factoryId -> numCyborgsToSend
+  for (let factoryId in factoriesByOwner[MY_ENTITY]) {
+    // Find average distance weighted by spare cyborgs from all my other factories
+    let weightedDistance = getSpareFactoryWeightedDistance(myFactoriesWithSpareCyborgs, totalNumSpareCyborgs, factoryId);
+    let numCyborgsToSend = calculateNumCyborgsToSend(weightedDistance, factoryId);
+    if (numCyborgsToSend <= totalNumSpareCyborgs && numCyborgsToSend > 0) {
+      possibleDefendFactories[factoryId] = numCyborgsToSend;
+    }
+  }
+
+  if (isEmpty(possibleDefendFactories)) {
+    return null;
+  }
+
+  // Choose best factoryId from possible factory ids
+  return Object.keys(possibleDefendFactories).reduce((id1, id2) => {
+    const numCyborgsToSend1 = possibleDefendFactories[id1];
+    const numCyborgsToSend2 = possibleDefendFactories[id2];
+
+    return getDefendRatio(id1, numCyborgsToSend1) > getDefendRatio(id2, numCyborgsToSend2) ? id1 : id2;
+  });
+}
+
+function getDefendRatio(factoryId, numCyborgsToSend) {
+  const factory = allFactories[factoryId];
+  return numCyborgsToSend * factory.prodRate; // TODO this is very simple. Optimize?
+}
+
 function getSpareFactoryWeightedDistance(spareFactories, totalSpareCyborgs, targetFactoryId) {
   return Object.keys(spareFactories).reduce((acc, spareFactoryId) => {
+    // Don't include the target factory!!!
+    if (spareFactoryId == targetFactoryId) {
+      return acc;
+    }
     const weight = spareFactories[spareFactoryId] / totalSpareCyborgs;
     return acc + (distanceFrom[spareFactoryId][targetFactoryId] * weight);
   }, 0);
@@ -128,16 +195,22 @@ function getTroopMoves(myFactoriesWithSpareCyborgs, totalSpareCyborgs, targetFac
   const weightedDistance = getSpareFactoryWeightedDistance(myFactoriesWithSpareCyborgs, totalSpareCyborgs, targetFactoryId);
   const numCyborgsToSend = calculateNumCyborgsToSend(weightedDistance, targetFactoryId);
   let totalSent = 0;
+  let closestSpareFactoryId = null
   // get more moves while the total cyborgs to send isn't reached
   while (totalSent !== numCyborgsToSend) {
     const numCyborgsStillNeeded = numCyborgsToSend - totalSent;
-    printErr(`numCyborgsStillNeeded: ${numCyborgsStillNeeded}`);
+    // printErr(`numCyborgsStillNeeded: ${numCyborgsStillNeeded}`);
 
     // get my closest spare factory to the target factory
-    const closestSpareFactoryId = findClosestFactoryId(Object.keys(myFactoriesWithSpareCyborgs), targetFactoryId);
-    printErr(`closestSpareFactoryId: ${closestSpareFactoryId}`);
+    closestSpareFactoryId = findClosestFactoryId(Object.keys(myFactoriesWithSpareCyborgs), targetFactoryId);
+    // printErr(`closestSpareFactoryId: ${closestSpareFactoryId}`);
+
+    if (closestSpareFactoryId == targetFactoryId) {
+      break; // We are trying to send cyborgs to ourselves.... bad
+    }
+
     const maxSpareCyborgs = myFactoriesWithSpareCyborgs[closestSpareFactoryId];
-    printErr(`maxSpareCyborgs: ${maxSpareCyborgs}`);
+    // printErr(`maxSpareCyborgs: ${maxSpareCyborgs}`);
 
     if (maxSpareCyborgs > numCyborgsStillNeeded) {
       // add as many as neccesary to the move
@@ -149,7 +222,7 @@ function getTroopMoves(myFactoriesWithSpareCyborgs, totalSpareCyborgs, targetFac
       totalSent += maxSpareCyborgs;
       delete myFactoriesWithSpareCyborgs[closestSpareFactoryId];
     }
-    printErr(`totalSent: ${totalSent}`);
+    // printErr(`totalSent: ${totalSent}`);
   }
 
   return move;
@@ -381,11 +454,14 @@ function predictNumCyborgs(factoryId, numTurns) {
     futureNumCyborgs += numTurns * factory.prodRate * owner; // add production over time (positive for us, negative for enemy)
   }
 
+  // printErr("future borgs1: " + futureNumCyborgs);
+
   // Now go through tropsEnRoute and see what they will do.
   for (let troopId in troopsEnRoute) {
     const troop = troopsEnRoute[troopId];
     futureNumCyborgs += troop.numCyborgs * troop.owner; // positive for us, negative for enemy
   }
+  // printErr("future borgs2: " + futureNumCyborgs);
 
   // Don't forget to cancel out the cyborgsLostToNeutralOwner for both owners
   if (cyborgsLostToNeutralByOwner) {
@@ -393,7 +469,7 @@ function predictNumCyborgs(factoryId, numTurns) {
     futureNumCyborgs += cyborgsLostToNeutralByOwner[ENEMY_ENTITY]; // they lost some
   }
 
-  // printErr("future borgs: " + futureNumCyborgs);
+  // printErr("future borgs3: " + futureNumCyborgs);
   return futureNumCyborgs;
 }
 
@@ -573,6 +649,14 @@ function findClosestFactoryId(factoryIds, factoryId) {
   }
 
   return factoryIds.reduce((a, b) => {
+    // Don't include self
+    if (a == factoryId) {
+      return b;
+    }
+    if (b == factoryId) {
+      return a;
+    }
+
     return distanceFrom[a][factoryId] < distanceFrom[b][factoryId] ? a : b;
   });
 }
