@@ -453,7 +453,7 @@ function initTurn(entityCount) {
     const entityType = inputs[1];
 
     if (entityType === FACTORY) {
-      saveFactory(entityId, parseInt(inputs[2], 10), parseInt(inputs[3], 10), parseInt(inputs[4], 10));
+      saveFactory(entityId, parseInt(inputs[2], 10), parseInt(inputs[3], 10), parseInt(inputs[4], 10), parseInt(inputs[5], 10));
     } else if (entityType === TROOP) {
       saveTroop(entityId, parseInt(inputs[2], 10), parseInt(inputs[3], 10), parseInt(inputs[4], 10), parseInt(inputs[5], 10), parseInt(inputs[6], 10));
     } else if (entityType === BOMB) {
@@ -462,9 +462,9 @@ function initTurn(entityCount) {
   }
 }
 
-function saveFactory(id, owner, numCyborgs, prodRate) {
-  allFactories[id] = {owner, numCyborgs, prodRate};
-  factoriesByOwner[owner][id] = {numCyborgs, prodRate};
+function saveFactory(id, owner, numCyborgs, prodRate, numTurnsToProduce) {
+  allFactories[id] = {owner, numCyborgs, prodRate, numTurnsToProduce};
+  factoriesByOwner[owner][id] = {numCyborgs, prodRate, numTurnsToProduce};
 }
 
 function saveTroop(id, owner, fromFactoryId, targetFactoryId, numCyborgs, turnsLeftUntilArrival) {
@@ -670,16 +670,23 @@ function getAttackTargetFactoryId(myFactoriesWithSpareCyborgs, factoryRatios, to
 }
 
 
-// TODO probably want to take into account any incoming enemy troops. Don't want to count cyborgs as spare if we need them to defend
 function getMyFactoriesWithSpareCyborgs(myFactories) {
   const myFactoriesWithSpareCyborgs = {};
   Object.keys(myFactories).map((myFactoryId) => {
     const myBaseArmySize = getMyBaseArmySize(myFactoryId);
     printErr(`myFactoryId ${myFactoryId}'s myBaseArmySize is ${myBaseArmySize}`);
-    const cyborgsAtFactory = myFactories[myFactoryId].numCyborgs;
 
-    if (cyborgsAtFactory > myBaseArmySize) {
-      myFactoriesWithSpareCyborgs[myFactoryId] = cyborgsAtFactory - Math.round(myBaseArmySize);
+    let numCyborgsAtFactory = myFactories[myFactoryId].numCyborgs;
+    let predictedCyborgsAtFactory = numCyborgsAtFactory;
+    const farthestIncomingEnemyTroop = getFarthestTroop(troopsByOwner[ENEMY_ENTITY], myFactoryId);
+    if (farthestIncomingEnemyTroop !== null) {
+      // Replace prediction with prediction when all incoming enemy troops arrive
+      predictedCyborgsAtFactory = predictNumCyborgs(myFactoryId, farthestIncomingEnemyTroop.turnsLeftUntilArrival);
+    }
+
+    // Make sure we don't send away troops that we need to defend against an incoming troop
+    if (numCyborgsAtFactory > myBaseArmySize && predictedCyborgsAtFactory > 0) {
+      myFactoriesWithSpareCyborgs[myFactoryId] = numCyborgsAtFactory - Math.round(myBaseArmySize);
     }
   });
   return myFactoriesWithSpareCyborgs;
@@ -689,6 +696,20 @@ function getTotalSpareCyborgs(factoriesWithSpareCyborgs) {
   return Object.values(factoriesWithSpareCyborgs).reduce((acc, spare) => {
     return acc + spare;
   }, 0);
+}
+
+function getFarthestTroop(troops, targetFactoryId) {
+  const targetTroopIds = Object.keys(troops).filter((troopId) => {
+    return troops[troopId].targetFactoryId == targetFactoryId;
+  });
+
+  if (targetTroopIds.length) {
+    return targetTroopIds.reduce((id1, id2) => {
+      return troops[id1].turnsLeftUntilArrival > troops[id2].turnsLeftUntilArrival ? id1 : id2;
+    });
+  }
+
+  return null;
 }
 
 /**
