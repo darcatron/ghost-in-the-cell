@@ -4,10 +4,9 @@
 */
 
 // TODO:
-// Sean's Top 3:
+// Sean's Top 2:
   // IF THERE IS A BOMB OUT THERE... ENCOURAGE MOVEMENT FOR OUR TROOPS SO WE DON'T GET WRECKED
   // We should really stop ignoring 0 production factories....
-  // if the enemy bomb hits, don't count the prod rate for 5 turns when predicting num cyborgs
 
 // Bomb Strategy
   // early on destroy their 3 and take it over
@@ -529,7 +528,7 @@ function predictNumCyborgs(factoryId, numTurns) {
   } else {
     // Not neutral!
     futureNumCyborgs += factory.numCyborgs * owner; // current num 'borgs (positive for us, negative for enemy)
-    futureNumCyborgs += numTurns * factory.prodRate * owner; // add production over time (positive for us, negative for enemy)
+    futureNumCyborgs += getProductionOverTime(factory, numTurns) * owner; // add production over time (positive for us, negative for enemy)
   }
 
   // printErr("future borgs1: " + futureNumCyborgs);
@@ -549,6 +548,17 @@ function predictNumCyborgs(factoryId, numTurns) {
 
   // printErr("future borgs3: " + futureNumCyborgs);
   return futureNumCyborgs;
+}
+
+
+// Takes into account the possibility of the factory not producing because of a bomb
+function getProductionOverTime(factory, numTurns) {
+  const numTurnsToProduce = factory.numTurnsToProduce;
+  if (numTurns >= numTurnsToProduce) {
+    return factory.prodRate * (numTurns - numTurnsToProduce);
+  }
+
+  return 0; // No production!
 }
 
 // PRECONDITION: factoryId is the id of a neutral factory!
@@ -678,11 +688,15 @@ function getMyFactoriesWithSpareCyborgs(myFactories) {
 
     let numCyborgsAtFactory = myFactories[myFactoryId].numCyborgs;
     let predictedCyborgsAtFactory = numCyborgsAtFactory;
-    const farthestIncomingEnemyTroop = getFarthestTroop(troopsByOwner[ENEMY_ENTITY], myFactoryId);
-    if (farthestIncomingEnemyTroop !== null) {
+    const farthestIncomingEnemyTroopId = getFarthestTroopId(troopsByOwner[ENEMY_ENTITY], myFactoryId);
+
+    printErr("farrthest troop id: " + JSON.stringify(farthestIncomingEnemyTroopId));
+    if (farthestIncomingEnemyTroopId !== null) {
       // Replace prediction with prediction when all incoming enemy troops arrive
-      predictedCyborgsAtFactory = predictNumCyborgs(myFactoryId, farthestIncomingEnemyTroop.turnsLeftUntilArrival);
+      predictedCyborgsAtFactory = predictNumCyborgs(myFactoryId, troopsByOwner[ENEMY_ENTITY][farthestIncomingEnemyTroopId].turnsLeftUntilArrival);
     }
+
+    // printErr("predicted num borgs: " + predictedCyborgsAtFactory);
 
     // Make sure we don't send away troops that we need to defend against an incoming troop
     if (numCyborgsAtFactory > myBaseArmySize && predictedCyborgsAtFactory > 0) {
@@ -698,10 +712,13 @@ function getTotalSpareCyborgs(factoriesWithSpareCyborgs) {
   }, 0);
 }
 
-function getFarthestTroop(troops, targetFactoryId) {
+function getFarthestTroopId(troops, targetFactoryId) {
+  // printErr("troops in farthest troop: " + JSON.stringify(troops));
   const targetTroopIds = Object.keys(troops).filter((troopId) => {
     return troops[troopId].targetFactoryId == targetFactoryId;
   });
+
+  printErr("target troop ids " + JSON.stringify(targetTroopIds));
 
   if (targetTroopIds.length) {
     return targetTroopIds.reduce((id1, id2) => {
