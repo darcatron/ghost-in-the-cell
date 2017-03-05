@@ -4,13 +4,16 @@
 */
 
 // TODO:
+// Sean's Top 3:
+  // IF THERE IS A BOMB OUT THERE... ENCOURAGE MOVEMENT FOR OUR TROOPS SO WE DON'T GET WRECKED
+  // We should really stop ignoring 0 production factories....
+  // if the enemy bomb hits, don't count the prod rate for 5 turns when predicting num cyborgs
+
 // Bomb Strategy
   // early on destroy their 3 and take it over
   // maybe use them as a retaliation? e.g. if they send a bomb, we'll send a bomb just to start
-  // if the enemy bomb hits, don't count the prod rate for 5 turns when predicting num cyborgs (edge case?)
 // Factory upgrade strategy
   // valuable for prodRate=0 factories
-    // if it's far away from enemies
     // if it's close to lots of our factories
     // if we have 10 + (estimated baseArmySize for a prodRate=0 factory assuming it has a prodRate=1) spare troops
       // move the spare troops there and level up that factory
@@ -92,6 +95,13 @@ function playGame() {
     const factoryRatios = getFactoryRatios(myFactoriesWithSpareCyborgs, totalNumSpareCyborgs);
     printErr(`factoryRatios: ${JSON.stringify(factoryRatios)}`);
 
+    const possibleUpgradeFactoryId = getMaybeFarUpgradeFactoryId(myFactoriesWithSpareCyborgs);
+    if (possibleUpgradeFactoryId !== null) {
+      move = addToMove(move, UPGRADE, possibleUpgradeFactoryId);
+      myFactoriesWithSpareCyborgs[possibleUpgradeFactoryId] -= CYBORGS_PER_UPGRADE;
+      totalNumSpareCyborgs = getTotalSpareCyborgs(myFactoriesWithSpareCyborgs);
+    }
+
     // Go for a single defend first before looking to attack
     let targetFactoryId = getDefendTargetFactoryId(myFactoriesWithSpareCyborgs, totalNumSpareCyborgs);
 
@@ -101,6 +111,7 @@ function playGame() {
 
     while (targetFactoryId) {
       printErr("targetFactoryId: " + targetFactoryId);
+      printErr("myFactoriesWithSpareCyborgs" + JSON.stringify(myFactoriesWithSpareCyborgs));
       move = getTroopMoves(myFactoriesWithSpareCyborgs, totalNumSpareCyborgs, targetFactoryId, move);
       printErr(`move so far: ${move}`);
       totalNumSpareCyborgs = getTotalSpareCyborgs(myFactoriesWithSpareCyborgs);
@@ -124,6 +135,36 @@ function playGame() {
     print(move);
     // To debug: printErr('Debug messages...');
   }
+}
+
+
+// Get a factory id to upgrade if it is far enough away from enemy factories
+function getMaybeFarUpgradeFactoryId(myFactoriesWithSpareCyborgs) {
+  const minEnemyDistanceToUpgrade = 5;
+
+  possibleFactoryIds = getPossibleFactoryIdsToUpgrade(factoriesByOwner[MY_ENTITY]);
+  // Make sure to only look at spare troops
+  possibleFactoryIds = possibleFactoryIds.filter((factoryId) => {
+    return myFactoriesWithSpareCyborgs[factoryId] >= MIN_CYBORGS_DESTROYED_BY_BOMB;
+  });
+
+  printErr("possibleFarUpgradeIds: " + JSON.stringify(possibleFactoryIds));
+  // Find our possible factory that is farthest away from their factories
+  if (possibleFactoryIds.length) {
+    const bestFactoryId = possibleFactoryIds.reduce((id1, id2) => {
+      const closestDistance1 = getClosestDistanceToFactories(factoriesByOwner[ENEMY_ENTITY], id1);
+      const closestDistance2 = getClosestDistanceToFactories(factoriesByOwner[ENEMY_ENTITY], id2);
+      return closestDistance1 >= closestDistance2 ? id1 : id2;
+    });
+
+    printErr("bestFactoryId: " + bestFactoryId);
+    printErr("closestDistance: " + getClosestDistanceToFactories(factoriesByOwner[ENEMY_ENTITY], bestFactoryId));
+    if (getClosestDistanceToFactories(factoriesByOwner[ENEMY_ENTITY], bestFactoryId) >= minEnemyDistanceToUpgrade) {
+      return bestFactoryId;
+    }
+  }
+
+  return null;
 }
 
 // returns an id of a factory to upgrade if one exists, otherwise returns null
@@ -185,7 +226,7 @@ function getSpareFactoryWeightedDistance(spareFactories, totalSpareCyborgs, targ
     if (spareFactoryId == targetFactoryId) {
       return acc;
     }
-    const weight = spareFactories[spareFactoryId] / totalSpareCyborgs;
+    const weight = spareFactories[spareFactoryId] / (totalSpareCyborgs + 1); // avoid divide by zero
     return acc + (distanceFrom[spareFactoryId][targetFactoryId] * weight);
   }, 0);
 }
@@ -314,7 +355,7 @@ function isMyBombEnRoute(targetFactoryId) {
 }
 
 function getClosestDistanceToFactories(factories, factoryId) {
-  const myClosestFactoryId = findClosestFactoryId(factories, factoryId);
+  const myClosestFactoryId = findClosestFactoryId(Object.keys(factories), factoryId);
   return distanceFrom[factoryId][myClosestFactoryId];
 }
 
@@ -629,6 +670,7 @@ function getAttackTargetFactoryId(myFactoriesWithSpareCyborgs, factoryRatios, to
 }
 
 
+// TODO probably want to take into account any incoming enemy troops. Don't want to count cyborgs as spare if we need them to defend
 function getMyFactoriesWithSpareCyborgs(myFactories) {
   const myFactoriesWithSpareCyborgs = {};
   Object.keys(myFactories).map((myFactoryId) => {
