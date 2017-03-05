@@ -33,8 +33,8 @@ const ENEMY_ENTITY = -1;
 const NEUTRAL_ENTITY = 0;
 
 /* Coefficents */
-const RDC = 5; // ratio distance - prioritize shorter distance from us when calculating the ratio
-const MBASC = 0.1; // my base army size - reduce the rate at which the base army size increases
+const RDC = 5; // ratio distance - prioritize shorter distance from us when calculating the ratio TODO this does absolutely nothing. Just an extra number to multiply at the end of each ratio. Should probably turn the ratios into adding. Something like: (PR / MAX_PR) - (numBorgs / total_borgs) - coef*(distance)
+const MBASC = 0.07; // my base army size - reduce the rate at which the base army size increases
 
 const distanceFrom = {}; // factoryA to factoryB
 const MAX_PROD_RATE = 3;
@@ -47,6 +47,7 @@ let sentInitialBomb = false;
 let allFactories = {};
 let factoriesByOwner = {};
 let bombsByOwner = {};
+let allTroops = {};
 let troopsByOwner = {};
 
 function initGame() {
@@ -80,7 +81,7 @@ function playGame() {
     initTurn(entityCount);
 
     const myFactories = factoriesByOwner[MY_ENTITY];
-    if (Object.keys(myFactories).length === 0) {
+    if (isEmpty(myFactories)) {
       // Have to wait if we have no factories
       print(WAIT);
       continue;
@@ -169,7 +170,7 @@ function playGame() {
 
 /* Potentially returns a bomb move */
 function bombStrategy() {
-  if (Object.keys(factoriesByOwner[ENEMY_ENTITY]).length > 0) {
+  if (!isEmpty(factoriesByOwner[ENEMY_ENTITY])) {
     let maybeBombMove = null;
     if (!sentInitialBomb) {
       maybeBombMove = getPossibleInitalBombMove();
@@ -235,7 +236,7 @@ function getPossibleInitialBombTarget(factories) {
  * @returns bomb move if we go for it, null otherwise
  */
 function getPossibleRetaliationBomb() {
-  if (!retaliatedOnThatBish && Object.keys(bombsByOwner[ENEMY_ENTITY]).length) {
+  if (!retaliatedOnThatBish && !isEmpty(bombsByOwner[ENEMY_ENTITY])) {
     const enemyFactoriesWithMaxProdRate = Object.keys(factoriesByOwner[ENEMY_ENTITY]).filter((factoryId) => factoriesByOwner[ENEMY_ENTITY][factoryId].prodRate === MAX_PROD_RATE);
     if (!isEmpty(enemyFactoriesWithMaxProdRate)) {
       const bestEnemyFactoryId = enemyFactoriesWithMaxProdRate.reduce((a, b) => {
@@ -305,6 +306,7 @@ function getNumCyborgs(owner) {
 function initTurn(entityCount) {
   allFactories = {};
   factoriesByOwner = {[MY_ENTITY]: {}, [NEUTRAL_ENTITY]: {}, [ENEMY_ENTITY]: {}};
+  allTroops = {};
   troopsByOwner = {[MY_ENTITY]: {}, [ENEMY_ENTITY]: {}};
   bombsByOwner = {[MY_ENTITY]: {}, [ENEMY_ENTITY]: {}};
 
@@ -329,6 +331,7 @@ function saveFactory(id, owner, numCyborgs, prodRate) {
 }
 
 function saveTroop(id, owner, fromFactoryId, targetFactoryId, numCyborgs, turnsLeftUntilArrival) {
+  allTroops[id] = {owner, fromFactoryId, targetFactoryId, numCyborgs, turnsLeftUntilArrival};
   troopsByOwner[owner][id] = {fromFactoryId, targetFactoryId, numCyborgs, turnsLeftUntilArrival};
 }
 
@@ -337,7 +340,6 @@ function saveBomb(id, owner, fromFactoryId, targetFactoryId, turnsLeftUntilArriv
 }
 
 // TODO this should take neutral vs enemy into account (enemy's factories will produce more cyborgs in the time we take to arrive)
-// TODO should take into account any troops going toward the targetFactory (maybe should use calculateNumCyborgsToSend rather than targetFactory.numCyborgs
 // TODO this should use the average distance from each of our factories to the targetFactoryId instead of just the single largest factory (due to my multi MOVE change)
 function getFactoryRatios(ourFactoryId) {
   const enemyAndNeutralFactoryIds = Object.keys(allFactories).filter((f) => allFactories[f].owner !== MY_ENTITY);
@@ -347,45 +349,159 @@ function getFactoryRatios(ourFactoryId) {
     const targetFactoryId = enemyAndNeutralFactoryIds[i];
     const targetFactory = allFactories[targetFactoryId];
     const distance = distanceFrom[ourFactoryId][targetFactoryId];
-    const predictedNumCyborgs = predictNumCyborgs(targetFactoryId, distance);
-    factoryRatios[targetFactoryId] = targetFactory.prodRate / (predictedNumCyborgs + 1) / (distance * RDC);
+    const predictedNumCyborgs = predictNumCyborgs(targetFactoryId, distance); // Returns negative number for enemies
+    if (predictedNumCyborgs <= 0) {
+      printErr("ratio for factory " + targetFactoryId + ": " + targetFactory.prodRate + " / (" + (-1 * predictedNumCyborgs) + " + 1) / (" + distance + " * " + RDC);
+      factoryRatios[targetFactoryId] = targetFactory.prodRate / ((-1 * predictedNumCyborgs) + 1) / (distance * RDC);
+    } else {
+      factoryRatios[targetFactoryId] = 0 // We are predicted to own the factory, don't prioritize at all
+    }
   }
 
   return factoryRatios;
 }
 
 /**
- * Predicts the numCyborgs at a factory in numTurns turns. Takes into account the current numCyborgs, incoming troops of the current owner, and the production rate
- * TODO: this assumes that the factory will not change owners in this time (doesn't take into account any of the non-owner's incoming troops)
+ * Predicts the numCyborgs at a factory in numTurns turns. Takes into account the current numCyborgs, incoming troops from both sides, and the production rate
+ * NOTE: this assumes that the factory will not change owners in this time (production rate is assumed to be for the current owner even though the owner might change)
  *
  * @param factoryId
  * @param numTurns
+ * @returns {number} A negative number means the enemy will have that many cyborgs after numTurns turns, positive number means we will have that many cyborgs
  */
 function predictNumCyborgs(factoryId, numTurns) {
+  printErr("factoryID: " + factoryId + " numTurns: " + numTurns);
   const factory = allFactories[factoryId];
   const owner = factory.owner;
-  let futureNumCyborgs = factory.numCyborgs; // current num 'borgs
-  if (owner !== NEUTRAL_ENTITY) {
-    futureNumCyborgs += numTurns * factory.prodRate; // add production over time
-  }
-  const ownerTroops = troopsByOwner[owner];
+  let futureNumCyborgs = 0;
 
-  // Add incoming troops that will make it to the factory by the end of numTurns turns
-  for (let troopId in ownerTroops) {
-    if (ownerTroops[troopId].targetFactoryId === factoryId && ownerTroops[troopId].turnsLeftUntilArrival <= numTurns) {
-      futureNumCyborgs += ownerTroops[troopId].numCyborgs;
+  // Deal with troops incoming to the factory. This is so fun!
+  const troopsEnRoute = getTroopsEnRoute(factoryId, numTurns);
+
+  // If neutral, get number of cyborgs for each owner that will be lost fighting neutral guard cyborgs
+  let cyborgsLostToNeutralByOwner = null;
+  if (owner === NEUTRAL_ENTITY) {
+    cyborgsLostToNeutralByOwner = predictCyborgsLostToNeutralByOwner(factoryId, numTurns, troopsEnRoute);
+    const numCyborgsLostByNeutral = cyborgsLostToNeutralByOwner[MY_ENTITY] + cyborgsLostToNeutralByOwner[ENEMY_ENTITY]; // These are the neutral guards that died
+    if (numCyborgsLostByNeutral > factory.numCyborgs) {
+      printErr("Programming error: neutral can't lose more than it had originally!");
+    }
+    futureNumCyborgs += factory.numCyborgs - numCyborgsLostByNeutral; // Subtract neutral guard cyborgs that got wrecked
+    futureNumCyborgs *= -1; // Negative for neutral cyborgs
+  } else {
+    // Not neutral!
+    futureNumCyborgs += factory.numCyborgs * owner; // current num 'borgs (positive for us, negative for enemy)
+    futureNumCyborgs += numTurns * factory.prodRate * owner; // add production over time (positive for us, negative for enemy)
+  }
+
+  // Now go through tropsEnRoute and see what they will do.
+  for (let troopId in troopsEnRoute) {
+    const troop = troopsEnRoute[troopId];
+    futureNumCyborgs += troop.numCyborgs * troop.owner; // positive for us, negative for enemy
+  }
+
+  // Don't forget to cancel out the cyborgsLostToNeutralOwner for both owners
+  if (cyborgsLostToNeutralByOwner) {
+    futureNumCyborgs -= cyborgsLostToNeutralByOwner[MY_ENTITY]; // we lost some
+    futureNumCyborgs += cyborgsLostToNeutralByOwner[ENEMY_ENTITY]; // they lost some
+  }
+
+  printErr("future borgs: " + futureNumCyborgs);
+  return futureNumCyborgs;
+}
+
+// PRECONDITION: factoryId is the id of a neutral factory!
+// Simulates the next numTurns turns based on troops incoming to factory with id = factoryId
+// Returns a dictionary with key of owner and value of num cyborgs lost
+function predictCyborgsLostToNeutralByOwner(factoryId, numTurns, troopsEnRoute) {
+  const cyborgsLost = {[MY_ENTITY] : 0, [ENEMY_ENTITY] : 0};
+
+  if (!factoriesByOwner[NEUTRAL_ENTITY].hasOwnProperty(factoryId)) {
+    printErr("PRECONDITION broken in predictCyborgsLostToNeutralByOwner: " + factoryId + " is not an id of a neutral factory!");
+    return cyborgsLost;
+  }
+
+  const neutralFactory = factoriesByOwner[NEUTRAL_ENTITY][factoryId];
+  let neutralGuardsLeft = neutralFactory.numCyborgs;
+
+  const troopIdsByNumTurns = getTroopIdsByNumTurns(troopsEnRoute);
+
+  // printErr("troopIdsByNumTurns: " + JSON.stringify(troopIdsByNumTurns));
+
+  // Add lost cyborgs for each troop (stop early if we have no neutral guards left)
+  for (let troopId of troopIdsByNumTurns) {
+    if (neutralGuardsLeft > 0) {
+      const troop = troopsEnRoute[troopId];
+      if (troop.numCyborgs >= neutralGuardsLeft) {
+        cyborgsLost[troop.owner] += neutralGuardsLeft;
+        neutralGuardsLeft = 0;
+      } else {
+        cyborgsLost[troop.owner] += troop.numCyborgs;
+        neutralGuardsLeft -= troop.numCyborgs;
+      }
+    } else {
+      break; // No guards left
     }
   }
 
-  return futureNumCyborgs;
+  // printErr("cyborgs lost by neutral: " + JSON.stringify(cyborgsLost));
+  return cyborgsLost;
 }
+
+
+function getTroopsEnRoute(targetFactoryId, numTurns) {
+  // printErr("targFactoryId: " + targetFactoryId + ", numTurns: " + numTurns);
+  // printErr("allTroops: " + JSON.stringify(allTroops));
+
+  let troopsEnRoute = {};
+  for (let troopId in allTroops) {
+    let troop = allTroops[troopId];
+    // printErr("testing troop " + troopId + ": " + JSON.stringify(troop));
+    if (troop.targetFactoryId == targetFactoryId && troop.turnsLeftUntilArrival <= numTurns) {
+      // printErr("got troop!: " + JSON.stringify(troop));
+      troopsEnRoute[troopId] = troop;
+    }
+  }
+
+  // printErr("returning troopsEnRoute: " + JSON.stringify(troopsEnRoute));
+  return troopsEnRoute;
+}
+
+// Sorts troops by numTurnsLeftUntilArrival and returns a list of troopIds in that order. Returns empty list if troops is empty
+function getTroopIdsByNumTurns(troops) {
+  if (isEmpty(troops)) {
+    return [];
+  }
+
+  const troopIds = Object.keys(troops);
+  return troopIds.sort(function (id1, id2) {
+    if (troops[id1].turnsLeftUntilArrival <= troops[id2].turnsLeftUntilArrival) {
+      return -1; // id1 is equal or better
+    } else {
+      return 1; // id2 is better
+    }
+  });
+}
+
+// Not sure if we'll need this, but it's here
+// function getTroopsEnRouteByOwner(targetFactoryId, numTurns) {
+//   let troopsEnRouteByOwner = {[MY_ENTITY] : {}, [ENEMY_ENTITY] : {}};
+//   for (let troopId in allTroops) {
+//     let troop =  allTroops[troopId];
+//     if (troop.targetFactoryId === targetFactoryId && troop.turnsLeftUntilArrival <= numTurns) {
+//       troopsEnRouteByOwner[troop.owner][troopId] = troop;
+//     }
+//   }
+//
+//   return troopsEnRouteByOwner;
+// }
 
 
 function getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs) {
   // Don't leave fewer than myBaseArmySize behind at any of my factories
   let bestFactoryId = null;
   let numCyborgsToSend = null;
-  while (bestFactoryId == null && Object.keys(factoryRatios).length > 0) {
+  while (bestFactoryId == null && !isEmpty(factoryRatios)) {
     // Find factory with highest ratio
     bestFactoryId = Object.keys(factoryRatios).reduce((a, b) => {
       return factoryRatios[a] > factoryRatios[b] ? a : b;
@@ -397,14 +513,9 @@ function getTargetFactoryId(fromFactoryId, factoryRatios, totalNumSpareCyborgs) 
     // printErr(`numCyborgsToSend: ${numCyborgsToSend}`);
     // printErr(`numSpareCyborgs: ${totalNumSpareCyborgs}`);
 
-    // if we already have enough cyborgs en route, don't bother
-    if (getNumTroopsEnRoute(bestFactoryId, distanceFrom[fromFactoryId][bestFactoryId])) {
-      delete factoryRatios[bestFactoryId];
-      bestFactoryId = null;
-    }
-
-    // if we don't have enough cyborgs total to spare, try next best target factory
-    if (numCyborgsToSend > totalNumSpareCyborgs) {
+    // if we don't have enough cyborgs total to spare OR if we don't need to send any,
+    // try next best target factory
+    if (numCyborgsToSend > totalNumSpareCyborgs || numCyborgsToSend <= 0) {
       delete factoryRatios[bestFactoryId];
       bestFactoryId = null;
     }
@@ -450,8 +561,9 @@ function getTotalSpareCyborgs(factoriesWithSpareCyborgs) {
  */
 function calculateNumCyborgsToSend(fromFactoryId, targetFactoryId) {
   const distance = distanceFrom[fromFactoryId][targetFactoryId];
-  const predictedNumCyborgs = predictNumCyborgs(targetFactoryId, distance);
-  return predictedNumCyborgs + 1 + calculateCushion(fromFactoryId, targetFactoryId);
+  const predictedNumCyborgs = predictNumCyborgs(targetFactoryId, distance); // Returns negative number for enemy cyborgs
+  const numCyborgsToSend = (-1 * predictedNumCyborgs) + 1 + calculateCushion(fromFactoryId, targetFactoryId);
+  return Math.max(numCyborgsToSend, 0); // Don't return negative number
 }
 
 /**
@@ -484,20 +596,13 @@ function findClosestFactoryId(factories, factoryId) {
   });
 }
 
-
-function getNumTroopsEnRoute(targetFactoryId, numTurns) {
-  let numTroopsEnRoute = 0;
-  for (let troopId in troopsByOwner[MY_ENTITY]) {
-    if (troopsByOwner[MY_ENTITY][troopId].turnsLeftUntilArrival <= numTurns) {
-      numTroopsEnRoute += troopsByOwner[MY_ENTITY][troopId].numCyborgs;
-    }
-  }
-
-  return numTroopsEnRoute;
-}
-
 function isEmpty(dict) {
   return Object.keys(dict).length === 0;
+}
+
+// Note: returns neutral as opposing neutral
+function getOpposingOwner(owner) {
+  return owner * -1;
 }
 
 initGame();
