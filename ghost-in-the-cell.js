@@ -114,7 +114,6 @@ function playGame() {
     }
 
     if (move == WAIT) {
-      printErr("TRYING UPGRADE!");
       // Stupid strategy... instead of waiting, increment our largest factory with prod rate < 3
       let possibleUpgradeMove = tryFactoryUpgrade();
       if (possibleUpgradeMove) {
@@ -128,12 +127,11 @@ function playGame() {
 }
 
 function tryFactoryUpgrade() {
-  printErr("factoriesByOwner[MY_ENTITY]: " + JSON.stringify(factoriesByOwner[MY_ENTITY]));
   const possibleIds = Object.keys(factoriesByOwner[MY_ENTITY]).filter((factoryId) => {
     return factoriesByOwner[MY_ENTITY][factoryId].prodRate < MAX_PROD_RATE && factoriesByOwner[MY_ENTITY][factoryId].numCyborgs >= CYBORGS_PER_UPGRADE;
   });
 
-  printErr("possibleIds: " + JSON.stringify(possibleIds));
+  // printErr("possibleIds for upgrade: " + JSON.stringify(possibleIds));
 
   if (possibleIds.length) {
     bestFactoryId = possibleIds.reduce((id1, id2) => {
@@ -251,6 +249,7 @@ function getPossibleInitalBombMove() {
   const targetFactoryId = getPossibleInitialBombTarget(factoriesByOwner[ENEMY_ENTITY]);
   if (targetFactoryId) {
     const fromFactoryId = findClosestFactoryId(Object.keys(factoriesByOwner[MY_ENTITY]), targetFactoryId);
+    printErr("sending initial bomb");
     sentInitialBomb = true;
     return `${BOMB} ${fromFactoryId} ${targetFactoryId}`;
   } else {
@@ -272,8 +271,10 @@ function getPossibleInitialBombTarget(factories) {
 
   let possibleTargetFactoryIds = Object.keys(factories).filter((factoryId) => {
     const numEnemyCyborgs = factories[factoryId].numCyborgs;
-    numEnemyCyborgs >= MIN_CYBORGS_DESTROYED_BY_BOMB - threshold && numEnemyCyborgs <= MIN_CYBORGS_DESTROYED_BY_BOMB + threshold;
+    return numEnemyCyborgs >= MIN_CYBORGS_DESTROYED_BY_BOMB - threshold && numEnemyCyborgs <= MIN_CYBORGS_DESTROYED_BY_BOMB + threshold;
   });
+
+  printErr("possibleInitialBombTargets: " + JSON.stringify(possibleTargetFactoryIds));
 
   if (possibleTargetFactoryIds.length) {
     possibleTargetFactoryIds.sort(function (id1, id2) {
